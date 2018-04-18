@@ -2,11 +2,12 @@ import numpy as np
 import pandas as pd
 
 class data:
-    def __init__(self,args.ld,args.ss,args.weights,args.annot_snplist,args.leave_out):
+    def __init__(self,args.ld,args.ss,args.weights,args.annot_snplist,args.leave_out,args.chrsnp_list):
         self.ld = args.ld
         self.ss = args.ss
         self.weights = args.weights
         self.annot_SNPs = args.annot_snplist
+        self.chrsnp_list = args.chrsnp_list
         self.test_region = args.leave_out
         self.train_ind = []
         self.test_ind = []
