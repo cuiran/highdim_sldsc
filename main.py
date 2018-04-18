@@ -15,9 +15,8 @@ def highdim_sldsc(args):
         Use the un-standardized coefficients and bias for prediction on test set.
         Save the un-standardized coefficients and bias to file
     """
-  
+    d.match_SNPs(args) 
     data = d.process(args)
-    print(data.ld)
     reg = r.perform_regression(args,data)
     p.process(args,reg,data)
 
