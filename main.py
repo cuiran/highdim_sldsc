@@ -15,11 +15,10 @@ def highdim_sldsc(args):
         Use the un-standardized coefficients and bias for prediction on test set.
         Save the un-standardized coefficients and bias to file
     """
-    d.match_SNPs(args) 
-    data = d.process(args)
-    reg = r.perform_regression(args,data)
+    matched_data = d.match_SNPs(args) 
+    ready_data = d.process(args,matched_data)
+    reg = r.perform_regression(args,ready_data)
     p.process(args,reg,data)
-
     return
 
 
@@ -29,7 +28,7 @@ if __name__=='__main__':
     parser.add_argument('--highdim-sldsc',action='store_true',help='run high dimensional stratified ldscore regression')
     parser.add_argument('--ld',help='The .h5 file combining ldscores for all annotations')
     parser.add_argument('--sumstats',help='Text file of formatted summary statistics with columns SNP, A1, A2, N, CHISQ, Z, where CHISQ is Z^2')
-    parser.add_argument('--annot-snplist',help='The text file listing all SNPs used to create annotations')
+    parser.add_argument('--annot-snplist',help='The text file listing all SNPs used to create annotations. This file should contain two columns, one is CHR, the other is SNP')
     parser.add_argument('--leave-out',help='Specify the region to leave out, for example, chr22')
     parser.add_argument('--reg-method',help='Name of the method to run regression with. Choose among OLS,Lasso,Lasso+OLS,elnet,grpLasso,skLassoCV,skOLS')
     parser.add_argument('--output-folder',help='Point to a location where the program can store output files')
