@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import useful_functions as u
 
 class data:
     def __init__(self,args.ld,args.ss,args.weights,args.annot_snplist,args.leave_out,args.chrsnp_list):
@@ -41,4 +42,9 @@ def process(args):
     return data(args.ld,args.ss,args.weights,args.annot_snplist,args.leave_out):
 
 def match_SNPs(args):
-    return data(args.ld,args.ss,args.weights,args.annot_snplist,args.leave_out)
+    annot_snps = pd.read_csv(args.annot_snplist,delim_whitespace=True)['SNP']
+    ss_snps = pd.read_csv(args.annot_snplist,delim_whitespace=True)['SNP']
+    if annot_snps==ss_snps:
+        return data(args.ld,args.ss,args.weights,args.annot_snplist,args.leave_out)
+    else:
+        raise ValueError('--ld and --sumstats must have the same SNPs')
