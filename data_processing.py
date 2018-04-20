@@ -16,11 +16,20 @@ class data:
 
 
 
-def process(args,d):
-    # compute y-1 and true weights
-    yminus1_fname = store_yminus1(d.y,args.out_folder)
-    true_w_fname = store_true_w(d.X,d.y,d.weights,d.active_ind)
-    return data(args.ld,yminus1_fname,true_w_fname,d.active_ind)
+def process(args,train_data):
+    # compute and store chisq-1
+    ss_df = pd.read_csv(train_data.y,delim_whitespace=True).iloc[train_data.active_ind,:]
+    chisq = ss_df['CHISQ'].tolist()
+    chisq_minus1 = [x-1 for x in chisq]
+    minus1_df = pd.DataFrame(data=chisq_minus1,columns=['CHISQ-1'])
+    minus1_fname = args.output_folder+'chisq_minus1.txt'
+    minus1_df.to_csv(minus1_fname,sep='\t',index=False)
+    # compute and store true weights
+    true_weights = compute_true_w(args,train_data)
+    true_w_df = pd.DataFrame(data=true_weights,columns=['TRUE_W'])
+    true_w_fname = args.output_folder+'true_weights.txt'
+    true_w_df.to_csv(true_w_fname,sep='\t',index=False)
+    return data(args.ld,minus1_fname,true_w_fname,train_data.active_ind)
 
 
 
@@ -28,7 +37,8 @@ def match_SNPs(args):
     annot_snps = pd.read_csv(args.annot_snplist,delim_whitespace=True)['SNP'].tolist()
     ss_snps = pd.read_csv(args.sumstats,delim_whitespace=True)['SNP'].tolist()
     if annot_snps==ss_snps:
-        return data(args.ld,args.sumstats,args.weights)
+        active_ind = [x for x in range(len(ss_snps))]
+        return data(args.ld,args.sumstats,args.weights,active_ind)
     else:
         raise ValueError('--ld and --sumstats must have the same SNPs')
 
@@ -46,6 +56,5 @@ def get_traintest_ind(args):
         print('--leave-out functionality is not complete.')
     return train_ind,test_ind
 
-
-def store_yminus1(y,folder):
-    
+def compute_true_w(args,data):
+    return []
