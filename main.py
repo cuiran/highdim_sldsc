@@ -18,7 +18,8 @@ def highdim_sldsc(args):
     d.match_SNPs(args)
     train_ind,test_ind = d.get_traintest_ind(args)
     train_data = d.data(args.ld,args.sumstats,args.weights,train_ind)
-    ready_data = d.process(args,train_data) #change y to y-1, compute true weights on taining data
+    #change chisq to chisq-1, compute true weights on taining data
+    ready_data = d.process(args,train_data)
     reg = r.perform_regression(args,ready_data)
     p.process(args,reg,ready_data)
     return
