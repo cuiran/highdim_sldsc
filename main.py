@@ -18,7 +18,7 @@ def highdim_sldsc(args):
     matched_data = d.match_SNPs(args) 
     ready_data = d.process(args,matched_data)
     reg = r.perform_regression(args,ready_data)
-    p.process(args,reg,data)
+    p.process(args,reg,ready_data)
     return
 
 
@@ -28,6 +28,7 @@ if __name__=='__main__':
     parser.add_argument('--highdim-sldsc',action='store_true',help='run high dimensional stratified ldscore regression')
     parser.add_argument('--ld',help='The .h5 file combining ldscores for all annotations')
     parser.add_argument('--sumstats',help='Text file of formatted summary statistics with columns SNP, A1, A2, N, CHISQ, Z, where CHISQ is Z^2')
+    parser.add_argument('--weights',help='The user input weights.')
     parser.add_argument('--annot-snplist',help='The text file listing all SNPs used to create annotations. This file should contain one column named SNP. The oder matches the oder of SNPs used in --ld.')
     parser.add_argument('--chrsnp-list',help='Provide a file with two columns CHR and SNP, the order matches the ones in annot ld SNPs.')
     parser.add_argument('--leave-out',help='Specify the region to leave out, for example, chr22')
