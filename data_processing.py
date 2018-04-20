@@ -4,50 +4,48 @@ import pdb
 import useful_functions as u
 
 class data:
-    def __init__(self,ld,ss,weights,annot_snplist,leave_out,chrsnp_list):
-        self.ld = ld
-        self.ss = ss
-        self.weights = weights
-        self.annot_SNPs = annot_snplist
-        self.chrsnp_list = chrsnp_list
-        self.test_region = leave_out
-        self._train_ind = None
-        self._test_ind = None
-    
-    @property
-    def test_ind(self):
-        if not self._test_ind: 
-            print('Lazy initialization of test_ind')
-            chr_list = ['chr'+str(i) for i in range(1,23)]
-            if self.test_region in chr_list:
-                chrsnp_df = pd.read_csv(self.chrsnp_list,delim_whitespace=True)
-                chr_num = int(self.test_region[3:])
-                self._test_ind = chrsnp_df.index[chrsnp_df['CHR']==chr_num].tolist()
-            else:
-                # TODO: the program should be able to take in a file of specified SNPs as leave-out
-                print('leave-out functionality is not complete.')
-        return self._test_ind
+    def __init__(self,X,y,weights,active_ind):
+        self.X = X  # file name contain regressor related info
+        self.y = y  # file name contain target related info
+        self.weights = weights  # file name contain weight related info
+        self.active_ind = active_ind # indices of X (also y) that are currently in use
+        self._mean_X = None # mean per column of active X
+        self._std_X = None  # std percolumn of active X
+        self._mean_y = None # mean per col of active y
+        self._std_y = None  # std per col of active y
 
-    @property
-    def train_ind(self):
-        if not self._train_ind:
-            print('Lazy initialization of train_ind')
-            chr_list = ['chr'+str(i) for i in range(1,23)]
-            if self.test_region in chr_list:
-                chrsnp_df = pd.read_csv(self.chrsnp_list,delim_whitespace=True)
-                all_ind = range(chrsnp_df.shape[0])
-                self._train_ind = [x for x in all_ind if x not in self._test_ind]
-            else:
-                print('leave-out functionality is not complete.')
-        return self._train_ind
 
-def process(args,matched_data):
-    return data(args.ld,args.sumstats,args.weights,args.annot_snplist,args.leave_out,args.chrsnp_list)
+
+def process(args,d):
+    # compute y-1 and true weights
+    yminus1_fname = store_yminus1(d.y,args.out_folder)
+    true_w_fname = store_true_w(d.X,d.y,d.weights,d.active_ind)
+    return data(args.ld,yminus1_fname,true_w_fname,d.active_ind)
+
+
 
 def match_SNPs(args):
     annot_snps = pd.read_csv(args.annot_snplist,delim_whitespace=True)['SNP'].tolist()
-    ss_snps = pd.read_csv(args.annot_snplist,delim_whitespace=True)['SNP'].tolist()
+    ss_snps = pd.read_csv(args.sumstats,delim_whitespace=True)['SNP'].tolist()
     if annot_snps==ss_snps:
-        return data(args.ld,args.sumstats,args.weights,args.annot_snplist,args.leave_out,args.chrsnp_list)
+        return data(args.ld,args.sumstats,args.weights)
     else:
         raise ValueError('--ld and --sumstats must have the same SNPs')
+
+
+def get_traintest_ind(args):
+    chr_list = ['chr'+str(i) for i in range(1,23)]
+    if args.leave_out in chr_list:
+        chrsnp = pd.read_csv(args.annot_snplist,delim_whitespace=True)
+        chr_num = int(args.leave_out[3:])
+        test_ind = chrsnp.index[chrsnp['CHR']==chr_num].tolist()
+        all_ind = range(chrsnp.shape[0])
+        train_ind = [x for x in all_ind if x not in test_ind]
+    else:
+        #TODO:implement ability to process of a file of specified SNPs to leave out
+        print('--leave-out functionality is not complete.')
+    return train_ind,test_ind
+
+
+def store_yminus1(y,folder):
+    
