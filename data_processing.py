@@ -1,14 +1,16 @@
 import numpy as np
 import pandas as pd
+import h5py
 import pdb
 import useful_functions as u
+from memory_profiler import profile
 
 class data:
     def __init__(self,X,y,weights,active_ind):
         self.X = X  # file name contain regressor related info
         self.y = y  # file name contain target related info
         self.weights = weights  # file name contain weight related info
-        self.active_ind = active_ind # indices of X (also y) that are currently in use
+        self.active_ind = active_ind # list of indices of X (also y and weights) that are currently in use
         self._mean_X = None # mean per column of active X
         self._std_X = None  # std percolumn of active X
         self._mean_y = None # mean per col of active y
@@ -56,6 +58,7 @@ def get_traintest_ind(args):
         print('--leave-out functionality is not complete.')
     return train_ind,test_ind
 
+@profile
 def compute_true_w(args,data):
     # concatenate weights in args.weights
     # this is the part of true weights that correct some of the correlated errors
@@ -68,12 +71,31 @@ def compute_true_w(args,data):
     # compute weights that correct some of the heteroskedasticity
     M = len(data.active_ind)
     M = float(M)
-    sum_trainld = sum_all(data.X,data.active_ind)
-    sum_trainss = sum_all(data.y,data.active_ind)
+    sum_trainld = h5_sum_all(data.X,data.active_ind)
+    sum_trainss = chisq_sum_all(data.y,data.active_ind)
     l = sum_trainld/M
     s = sum_trainss/M
     Ntau_hat = np.divide(s-1,l)
-    weights_hetero = 2*((Ntau_hat*sum_cols(data.X,data.active_ind)+1)**2)
+    weights_hetero = 2*((Ntau_hat*h5_sum_cols(data.X,data.active_ind)+1)**2)
     # multiply heteroskedasticity weights with correlation weights
     true_weights = np.multiply(weights_hetero,weights_corr)
     return true_weights
+
+def h5_sum_all(h5_file, active_ind):
+    # sum all elements in the h5 file. The file must have key 'dataset'
+    f = h5py.File(h5_file,'r')
+    d = f['dataset']
+    s = np.sum(d[active_ind,:])
+    return s
+
+def h5_sum_cols(h5_file,active_ind):
+    # sum columns in the h5 file. The file must have key 'dataset'
+    f = h5py.File(h5_file,'r')
+    d = f['dataset']
+    s = np.sum(d[active_ind,:],axis=1)
+    return s
+
+def chisq_sum_all(ss_file, active_ind):
+    ss_df = pd.read_csv(ss_file,delim_whitespace=True)
+    chisq = np.array(ss_df['CHISQ'])
+    return np.sum(chisq)
