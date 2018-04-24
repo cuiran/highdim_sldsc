@@ -1,6 +1,6 @@
 import argparse
 import data_processing as d
-import regression as r
+import reg_main as r
 import post_processing as p
 import pdb
 def highdim_sldsc(args):
@@ -20,6 +20,7 @@ def highdim_sldsc(args):
     train_data = d.data(args.ld,args.sumstats,args.weights,train_ind)
     #change chisq to chisq-1, compute true weights on taining data
     ready_data = d.process(args,train_data)
+    #perform regression with specified parameters on ready_data
     reg = r.perform_regression(args,ready_data)
     p.process(args,reg,ready_data)
     return
