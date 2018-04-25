@@ -29,3 +29,20 @@ def high_dim_sldsc(args):
             # store results to file
             coef_fname,bias_fname = r.run_reg_multi_methods(stdized_ldtr_fname,stdized_ttr_fname,scaled_train_weights,args)
             p.predict_multi_methods(coef_fname,bias_fname,mldtr_fname,sldtr_fname,mttr_fname,sttr_fname,args)
+
+
+# the old process function
+def process(args,train_data):
+    # compute and store true weights
+    true_weights = compute_true_w(args,train_data)
+    true_w_df = pd.DataFrame(data=true_weights,columns=['TRUE_W'])
+    true_w_fname = args.output_folder+'true_weights.txt'
+    true_w_df.to_csv(true_w_fname,sep='\t',index=False)
+    # compute and store chisq-1
+    ss_df = pd.read_csv(train_data.y,delim_whitespace=True).iloc[train_data.active_ind,:]
+    chisq = ss_df['CHISQ'].tolist()
+    chisq_minus1 = [x-1 for x in chisq]
+    minus1_df = pd.DataFrame(data=chisq_minus1,columns=['CHISQ-1'])
+    minus1_fname = args.output_folder+'chisq_minus1.txt'
+    minus1_df.to_csv(minus1_fname,sep='\t',index=False)
+    return data(args.ld,minus1_fname,true_w_fname,train_data.active_ind)
