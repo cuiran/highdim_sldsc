@@ -9,30 +9,14 @@ class data:
     def __init__(self,X,y,weights,active_ind):
         self.X = X  # file name contain regressor related info
         self.y = y  # file name contain target related info
-        self.weights = weights  # file name contain weight related info
+        self.weights = weights  # file name contain weight
         self.active_ind = active_ind # list of indices of X (also y and weights) that are currently in use
         self._mean_X = None # mean per column of active X
         self._std_X = None  # std percolumn of active X
         self._mean_y = None # mean per col of active y
         self._std_y = None  # std per col of active y
 
-
-
-def process(args,train_data):
-    # compute and store true weights
-    true_weights = compute_true_w(args,train_data)
-    true_w_df = pd.DataFrame(data=true_weights,columns=['TRUE_W'])
-    true_w_fname = args.output_folder+'true_weights.txt'
-    true_w_df.to_csv(true_w_fname,sep='\t',index=False)
-    # compute and store chisq-1
-    ss_df = pd.read_csv(train_data.y,delim_whitespace=True).iloc[train_data.active_ind,:]
-    chisq = ss_df['CHISQ'].tolist()
-    chisq_minus1 = [x-1 for x in chisq]
-    minus1_df = pd.DataFrame(data=chisq_minus1,columns=['CHISQ-1'])
-    minus1_fname = args.output_folder+'chisq_minus1.txt'
-    minus1_df.to_csv(minus1_fname,sep='\t',index=False)
-    return data(args.ld,minus1_fname,true_w_fname,train_data.active_ind)
-
+    
 
 
 def match_SNPs(args):
@@ -40,7 +24,7 @@ def match_SNPs(args):
     ss_snps = pd.read_csv(args.sumstats,delim_whitespace=True)['SNP'].tolist()
     if annot_snps==ss_snps:
         active_ind = [x for x in range(len(ss_snps))]
-        return data(args.ld,args.sumstats,args.weights,active_ind)
+        return data(args.ld,args.sumstats,args.weights_ld,active_ind)
     else:
         raise ValueError('--ld and --sumstats must have the same SNPs')
 
@@ -58,12 +42,11 @@ def get_traintest_ind(args):
         print('--leave-out functionality is not complete.')
     return train_ind,test_ind
 
-@profile
 def compute_true_w(args,data):
-    # concatenate weights in args.weights
+    # concatenate weights in args.weights_ld
     # this is the part of true weights that correct some of the correlated errors
     chr_list = [str(i) for i in range(1,23)]
-    weights_fnames = [args.weights+x+'.l2.ldscore.gz' for x in chr_list]
+    weights_fnames = [args.weights_ld+x+'.l2.ldscore.gz' for x in chr_list]
     weights_dfs = [pd.read_csv(x,delim_whitespace=True) for x in weights_fnames]
     to_concat = [df.iloc[:,-1] for df in weights_dfs]
     weights_corr = np.concatenate(to_concat,axis=0)
@@ -99,3 +82,7 @@ def chisq_sum_all(ss_file, active_ind):
     ss_df = pd.read_csv(ss_file,delim_whitespace=True)
     chisq = np.array(ss_df['CHISQ'])
     return np.sum(chisq)
+
+def get_num_SNPs(args):
+    snplist_df = pd.read_csv(args.annot_snplist,delim_whitespace=True)
+    return snplist_df.shape[0]
