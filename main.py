@@ -37,7 +37,7 @@ def highdim_sldsc(args):
     train_data = d.data(args.ld,args.sumstats,weights_fname,train_ind)
     test_data = d.data(args.ld,args.sumstats,weights_fname,test_ind)
     #perform regression with specified parameters on ready_data
-    reg = r.perform_regression(args,train_data)
+    reg = r.perform_regression(args.reg_method,train_data)
     p.process(args,reg,test_data)
     return
 
