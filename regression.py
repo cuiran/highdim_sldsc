@@ -26,7 +26,7 @@ class Lasso(regression):
         # call this method if alpha is set to be 'CV'
         kf = KFold(n_splits = self.CV_folds)
         candidate_params_for_scaled_data = get_candidate_params_for_scaled_data(data)        
-        cv_loss_array = [] # loss for each candidate param
+        cv_loss_array = [] # xval loss for each candidate param
         active_ss_array = get_active_ss_array(data) # put active sumstats into array TODO:write this function
         for param in candidate_params_for_scaled_data:
             cv_loss = 0
@@ -38,6 +38,13 @@ class Lasso(regression):
                 lasso_train.fit(train_obj)
                 val_obj = d.data(data.X,data.y,data.weights,val_ind)
                 # TODO: evaluate learned coef and intercept from lasso_train on val_obj, add loss to cv_loss. Reference pyscripts/choose_regparam.py
+                val_obj = d.data(data.X,data.y,data.weights,val_ind)
+                lasso_train.evaluate(val_obj) # TODO: write this method to generate lasso_train.cv_loss, note, this is weighted loss.
+                cv_loss += lasso_train.cv_loss
+        cv_loss_array.append(cv_loss)
+        # TODO: if the mininum loss occurs at the smallest param, create another list of candidate params that are smaller
+        return candidate_params[np.argmin(cv_loss_array)]
+                
 
     def fit(self,data):
         return
