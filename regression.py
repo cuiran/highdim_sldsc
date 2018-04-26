@@ -4,6 +4,7 @@ from keras.models import Sequential
 from keras.models import Model
 from keras.layers.core import Dense
 from keras import optimizers
+import reg_main as r
 
 
 class regression:
@@ -25,32 +26,38 @@ class Lasso(regression):
     def choose_param(self,data):
         # call this method if alpha is set to be 'CV'
         kf = KFold(n_splits = self.CV_folds)
-        candidate_params_for_scaled_data = get_candidate_params_for_scaled_data(data)        
-        cv_loss_array = [] # xval loss for each candidate param
-        active_ss_array = get_active_ss_array(data) # put active sumstats into array TODO:write this function
-        for param in candidate_params_for_scaled_data:
-            cv_loss = 0
-            cv_num = 1
-            for train_ind,val_ind in kf.split(active_ss_array):
-                cv_num+=1
-                train_obj = d.data(data.X,data.y,data.weights,train_ind)
-                lasso_train = Lasso(alpha=param)
-                lasso_train.fit(train_obj)
-                val_obj = d.data(data.X,data.y,data.weights,val_ind)
-                # TODO: evaluate learned coef and intercept from lasso_train on val_obj, add loss to cv_loss. Reference pyscripts/choose_regparam.py
-                val_obj = d.data(data.X,data.y,data.weights,val_ind)
-                lasso_train.evaluate(val_obj) # TODO: write this method to generate lasso_train.cv_loss, note, this is weighted loss.
-                cv_loss += lasso_train.cv_loss
-        cv_loss_array.append(cv_loss)
-        # TODO: if the mininum loss occurs at the smallest param, create another list of candidate params that are smaller
-        return candidate_params[np.argmin(cv_loss_array)]
-                
+        candidate_params_for_scaled_data = get_candidate_params_for_scaled_data(data) 
+        cv_losses = compute_cvlosses(candidate_params_for_scaled_data,data,kf,'Lasso')
+        # TODO: if the mininum loss occurs at the smallest param, try smaller candidate params
+        return candidate_params[np.argmin(cv_losses)] 
 
     def fit(self,data):
         return
 
 
+def compute_cvlosses(candidate_params,data,kf,reg_method):
+   """
+     candidate_params: a list of candidate parameters
+     data: a data object to compute losses on
+     kf: object created by KFold, contains indices for train and validation sets
+     this function outputs an array of losses for the list of candidate_params
+    """
+    active_ss_array = get_active_ss_array(data) # get active sumstats array TODO: write this function
+    losses = []
+    for param in candidate_params_for_scaled_data:
+        cv_loss = 0
+        for train_ind,val_ind in kf.split(active_ss_array):
+            train_obj = d.data(data.X,data.y,data.weights,train_ind)
+            val_obj = d.data(data.X,data.y,data.weights,val_ind)
+            reg = r.perform_regression(reg_method,train_obj)
+            reg.evaluate(val_obj) #TODO: write evaluate method in regression object, evaluate weighted loss on val_obj
+            cv_loss += reg.cv_loss
+        losses.append(cv_loss)
+    return losses
+
+
 def get_candidate_params_for_scaled_data(data):
     # assuming the input data is unscaled, but has attributes mean and std
-    
+    # TODO finish writing this function, refer to pyscripts/choose_regparam.py
+        
     return 
