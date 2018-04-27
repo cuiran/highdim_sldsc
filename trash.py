@@ -46,3 +46,8 @@ def process(args,train_data):
     minus1_fname = args.output_folder+'chisq_minus1.txt'
     minus1_df.to_csv(minus1_fname,sep='\t',index=False)
     return data(args.ld,minus1_fname,true_w_fname,train_data.active_ind)
+
+    weights_scaled = d.scale_weights(weights) #TODO: write this function
+    s_weights_df = pd.DataFrame(data=weights_scaled,columns=['SCALED_W'])
+    weights_fname = args.output_folder+'scaled_weights.txt'
+    s_weights_df.to_csv(weights_fname,sep='\t',index=False)
