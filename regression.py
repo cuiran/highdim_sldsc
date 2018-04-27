@@ -60,17 +60,36 @@ def compute_cvlosses(candidate_params,data,kf,reg_method):
 def get_candidate_params_for_scaled_data(data):
     # assuming the input data is unscaled, but has attributes mean and std
     # TODO finish writing this function, refer to pyscripts/choose_regparam.py
-    scaled_weighted_ydotX = compute_scaled_weighted_ydotX(data)
+    scaled_weighted_ydotX = compute_scaled_weighted_ydotX(data) #ndarray
     N = len(data.active_ind)
     max_param = np.max(np.divide(np.abs(scaled_weighted_ydotX),N)) 
-    # this formula for max_param is from Regularization Paths for Generalized Linear Models via Coordinate Descent
+    # this formula for max_param is from Regularization Paths for Generalized Linear Models via Coordinate Descent by Friedman et. al.
 
 def compute_scaled_weighted_ydotX(data):
     # the idea is to multiply y and X by weights, standardize them then compute the dot product
     # but realistically we have computational constraints so we need to chunck the data
-    wy = compute_wy(data)
+    wy = compute_wy(data) #ndarray
+    compute_and_store_weighted_meanstdy(wy)
     chuncks = make_chuncks(data) # indices of chuncks
+    dot = []
+    mean = []
+    std = []
     for ind in chuncks:
-        
-    return
+        wchunck = compute_weighted_chunck(data,ind)
+        mean.append(np.mean(wchunck,axis=1))
+        std.append(np.std(wchunck,axis=1))
+        dot.append(wy.dot(wchunck))
+    store_weighted_meanstdX(mean,std)
+    return np.concatenate(dot,axis=0)
 
+def make_chuncks(data):
+    # outputs list of list of indices 
+    # default to chunck size = 100
+
+    return 
+
+def compute_weighted_chunck(data,ind):
+    # for the chunck of X given by ind compute weighted chunck
+    # return ndarray of weight times chunck of X
+
+    return 
