@@ -69,18 +69,22 @@ def compute_scaled_weighted_ydotX(data):
     # the idea is to multiply y and X by weights, standardize them then compute the dot product
     # but realistically we have computational constraints so we need to chunck the data
     wy = compute_wy(data) #ndarray
-    compute_and_store_weighted_meanstdy(wy)
+    mean_wy,std_wy = compute_and_store_weighted_meanstdy(wy)
     chuncks = make_chuncks(data) # indices of chuncks
     dot = []
-    mean = []
-    std = []
+    mean_wX = []
+    std_wX = []
     for ind in chuncks:
         wchunck = compute_weighted_chunck(data,ind)
-        mean.append(np.mean(wchunck,axis=1))
-        std.append(np.std(wchunck,axis=1))
+        mean_wX.append(np.mean(wchunck,axis=1))
+        std_wX.append(np.std(wchunck,axis=1))
         dot.append(wy.dot(wchunck))
+    mean_wX = np.concatenate(mean,axis=0)
+    std_wX = np.concatenate(std,axis=0)
+    wydotX = np.concatenate(dot,axis=0)
     store_weighted_meanstdX(mean,std)
-    return np.concatenate(dot,axis=0)
+    scaled_weighted_ydotX = compute_scaled_weighted_ydotX(wydotX,mean_wX,std_wX,mean_wy,std_wy)
+    return scaled_weighted_ydotX
 
 def make_chuncks(data):
     # outputs list of list of indices 
