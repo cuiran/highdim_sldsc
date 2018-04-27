@@ -26,12 +26,13 @@ class Lasso(regression):
     def choose_param(self,data):
         # call this method if alpha is set to be 'CV'
         kf = KFold(n_splits = self.CV_folds)
-        candidate_params_for_scaled_data = get_candidate_params_for_scaled_data(data) 
+        candidate_params_for_scaled_weighted_data = get_candidate_params_for_scaled_weighted_data(data) 
         cv_losses = compute_cvlosses(candidate_params_for_scaled_data,data,kf,'Lasso')
         # TODO: if the mininum loss occurs at the smallest param, try smaller candidate params
         return candidate_params[np.argmin(cv_losses)] 
 
     def fit(self,data):
+        # first weight the data, then scale the weighted data before fitting model
         return
 
 
@@ -59,5 +60,17 @@ def compute_cvlosses(candidate_params,data,kf,reg_method):
 def get_candidate_params_for_scaled_data(data):
     # assuming the input data is unscaled, but has attributes mean and std
     # TODO finish writing this function, refer to pyscripts/choose_regparam.py
+    scaled_weighted_ydotX = compute_scaled_weighted_ydotX(data)
+    N = len(data.active_ind)
+    max_param = np.max(np.divide(np.abs(scaled_weighted_ydotX),N)) 
+    # this formula for max_param is from Regularization Paths for Generalized Linear Models via Coordinate Descent
+
+def compute_scaled_weighted_ydotX(data):
+    # the idea is to multiply y and X by weights, standardize them then compute the dot product
+    # but realistically we have computational constraints so we need to chunck the data
+    wy = compute_wy(data)
+    chuncks = make_chuncks(data) # indices of chuncks
+    for ind in chuncks:
         
-    return 
+    return
+
