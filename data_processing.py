@@ -15,7 +15,10 @@ class data:
         self._std_X = None  # std percolumn of active X
         self._mean_y = None # mean per col of active y
         self._std_y = None  # std per col of active y
-
+        self._weighted_meanX = None # mean per column of weighted X
+        self._weighted_stdX = None
+        self._weighted_meany = None
+        self._weighted_stdy = None
     
 
 
