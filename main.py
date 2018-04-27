@@ -28,10 +28,6 @@ def highdim_sldsc(args):
     weights_df = pd.DataFrame(data=weights,columns=['TRUE_W'])
     weights_fname = args.output_folder+'true_weights.txt'
     weights_df.to_csv(weights_fname,sep='\t',index=False)
-    weights_scaled = d.scale_weights(weights) #TODO: write this function
-    s_weights_df = pd.DataFrame(data=weights_scaled,columns=['SCALED_W'])
-    weights_fname = args.output_folder+'scaled_weights.txt'
-    s_weights_df.to_csv(weights_fname,sep='\t',index=False)
     #TODO: put the above weights processing into one function in data_processing.py
     # form train and test data objects
     train_data = d.data(args.ld,args.sumstats,weights_fname,train_ind)
