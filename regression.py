@@ -59,11 +59,17 @@ def compute_cvlosses(candidate_params,data,kf,reg_method):
 
 def get_candidate_params_for_scaled_data(data):
     # assuming the input data is unscaled, but has attributes mean and std
-    # TODO finish writing this function, refer to pyscripts/choose_regparam.py
     scaled_weighted_ydotX = compute_scaled_weighted_ydotX(data) #ndarray
     N = len(data.active_ind)
     max_param = np.max(np.divide(np.abs(scaled_weighted_ydotX),N)) 
     # this formula for max_param is from Regularization Paths for Generalized Linear Models via Coordinate Descent by Friedman et. al.
+    candidate_params = compute_candidate_params(max_param)
+    return candidate_params
+
+def compute_candidate_params(max_param):
+    # given max parameter, create list of candidate params by dividing max_param by 2 for 10 times
+    candidate_params = np.array([max_param*(2**-i) for i in range(1,11)])
+    return candidate_params
 
 def compute_scaled_weighted_ydotX(data):
     # the idea is to multiply y and X by weights, standardize them then compute the dot product
@@ -82,7 +88,7 @@ def compute_scaled_weighted_ydotX(data):
     mean_wX = np.concatenate(mean,axis=0)
     std_wX = np.concatenate(std,axis=0)
     wydotX = np.concatenate(dot,axis=0)
-    store_weighted_meanstdX(mean,std)
+    store_weighted_meanstdX(mean,std) #TODO: write this function
     scaled_weighted_ydotX = compute_scaled_weighted_ydotX(wydotX,mean_wX,std_wX,mean_wy,std_wy)
     return scaled_weighted_ydotX
 
