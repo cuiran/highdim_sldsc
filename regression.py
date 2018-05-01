@@ -32,6 +32,7 @@ class Lasso(regression):
         return candidate_params[np.argmin(cv_losses)] 
 
     def fit(self,data):
+        # TODO finish writing this function
         # first weight the data, then scale the weighted data before fitting model
         return
 
@@ -84,11 +85,6 @@ def compute_scaled_weighted_ydotX(data):
     scaled_weighted_ydotX = compute_scaledwydotwX_from_weighted(wydotwX,data)
     return scaled_weighted_ydotX
 
-def compute_weighted_chunck(data,ind): # TODO
-    # for the chunck of X given by ind compute weighted chunck
-    # return ndarray of weights times chunck of X
-
-    return 
 
 def compute_scaledwydotwX_from_weighted(wydotwX,data):
     # yst\dot Xst = (y\dot X - M\mu_y \mu_X) / (\sigma_y \sigma_X)
