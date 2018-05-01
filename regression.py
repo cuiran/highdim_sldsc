@@ -5,7 +5,7 @@ from keras.models import Model
 from keras.layers.core import Dense
 from keras import optimizers
 import reg_main as r
-
+import useful_functions as u
 
 class regression:
     def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.):
@@ -43,7 +43,7 @@ def compute_cvlosses(candidate_params,data,kf,reg_method):
      kf: object created by KFold, contains indices for train and validation sets
      this function outputs an array of losses for the list of candidate_params
     """
-    active_ss_array = get_active_ss_array(data) # get active sumstats array TODO: write this function
+    active_ss_array = u.read_chisq_from_ss(data.y,data.active_ind)
     losses = []
     for param in candidate_params_for_scaled_data:
         cv_loss = 0
@@ -57,7 +57,7 @@ def compute_cvlosses(candidate_params,data,kf,reg_method):
     return losses
 
 
-def get_candidate_params_for_scaled_data(data):
+def get_candidate_params_for_scaled_weighted_data(data):
     # assuming the input data is unscaled, but has attributes mean and std
     scaled_weighted_ydotX = compute_scaled_weighted_ydotX(data) #ndarray
     N = len(data.active_ind)
@@ -75,31 +75,23 @@ def compute_scaled_weighted_ydotX(data):
     # the idea is to multiply y and X by weights, standardize them then compute the dot product
     # but realistically we have computational constraints so we need to chunck the data
     wy = compute_wy(data) #ndarray
-    mean_wy,std_wy = compute_and_store_weighted_meanstdy(wy)
-    chuncks = make_chuncks(data) # indices of chuncks
+    chuncks = u.make_chuncks(data) # indices of column chuncks
     dot = []
-    mean_wX = []
-    std_wX = []
     for ind in chuncks:
         wchunck = compute_weighted_chunck(data,ind)
-        mean_wX.append(np.mean(wchunck,axis=1))
-        std_wX.append(np.std(wchunck,axis=1))
         dot.append(wy.dot(wchunck))
-    mean_wX = np.concatenate(mean,axis=0)
-    std_wX = np.concatenate(std,axis=0)
-    wydotX = np.concatenate(dot,axis=0)
-    store_weighted_meanstdX(mean,std) #TODO: write this function
-    scaled_weighted_ydotX = compute_scaled_weighted_ydotX(wydotX,mean_wX,std_wX,mean_wy,std_wy)
+    wydotwX = np.concatenate(dot,axis=0)
+    scaled_weighted_ydotX = compute_scaledwydotwX_from_weighted(wydotwX,data)
     return scaled_weighted_ydotX
 
-def make_chuncks(data):
-    # outputs list of list of indices 
-    # default to chunck size = 100
-
-    return 
-
-def compute_weighted_chunck(data,ind):
+def compute_weighted_chunck(data,ind): # TODO
     # for the chunck of X given by ind compute weighted chunck
-    # return ndarray of weight times chunck of X
+    # return ndarray of weights times chunck of X
 
     return 
+
+def compute_scaledwydotwX_from_weighted(wydotwX,data):
+    # yst\dot Xst = (y\dot X - M\mu_y \mu_X) / (\sigma_y \sigma_X)
+    M = len(data.active_ind)
+    wyst_dot_wXst = np.divide(np.subtract(wydotwX,np.multiply(M,np.multiply(data.weighted_meanX,data.weighted_meany))),np.multiply(data.weighted_stdX,weighted_stdy))
+    return wyst_dot_wXst
