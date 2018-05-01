@@ -48,3 +48,8 @@ def compute_weighted_chunck(data,ind):
     # for the chunck of X given by ind, compute weights times chunck
     # return ndarray of weighted chunck
 
+def compute_wy(data):
+    #TODO finish writing this function
+    # compute weights times y
+    # return ndarray of weighted chisq
+    
