@@ -7,9 +7,9 @@ from memory_profiler import profile
 
 class data:
     def __init__(self,X,y,weights,active_ind):
-        self.X = X  # file name contain regressor related info
-        self.y = y  # file name contain target related info
-        self.weights = weights  # file name contain weight
+        self.X = X  # file name contain regressor related info, it's an h5 file
+        self.y = y  # file name contain target related info, it's a text file containing sumstats, chisq info
+        self.weights = weights  # file name contain weights related info
         self.active_ind = active_ind # list of indices of X (also y and weights) that are currently in use
         self._mean_X = None # mean per column of active X
         self._std_X = None  # std percolumn of active X
