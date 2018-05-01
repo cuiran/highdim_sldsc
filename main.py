@@ -22,19 +22,13 @@ def highdim_sldsc(args):
     num_SNPs = d.get_num_SNPs(args)
     original_data = d.data(args.ld,args.sumstats,args.weights_ld,range(num_SNPs))
     train_ind,test_ind = d.get_traintest_ind(args)
-    # from weights_ld, annotation ld, and sumstats compute true weights
-    # scale weights to have variance 1
-    weights = d.compute_true_w(args,original_data)
-    weights_df = pd.DataFrame(data=weights,columns=['TRUE_W'])
-    weights_fname = args.output_folder+'true_weights.txt'
-    weights_df.to_csv(weights_fname,sep='\t',index=False)
-    #TODO: put the above weights processing into one function in data_processing.py
+    d.weights_processing(args,original_data) # compute final weights and store in file
     # form train and test data objects
     train_data = d.data(args.ld,args.sumstats,weights_fname,train_ind)
     test_data = d.data(args.ld,args.sumstats,weights_fname,test_ind)
-    #perform regression with specified parameters on ready_data
+    #perform regression with specified parameters on training data
     reg = r.perform_regression(args.reg_method,train_data)
-    p.process(args,reg,test_data)
+    p.process(args,reg,test_data) # postprocessing on testing data
     return
 
 
