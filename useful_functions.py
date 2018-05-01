@@ -42,3 +42,9 @@ def read_h5(h5file):
     # the key of the h5file has to be 'dataset' for this function to work properly
     f = h5py.File(h5file,'r')
     return f['dataset']
+
+def compute_weighted_chunck(data,ind):
+    # TODO finish writing this function
+    # for the chunck of X given by ind, compute weights times chunck
+    # return ndarray of weighted chunck
+
