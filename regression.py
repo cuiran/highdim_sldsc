@@ -75,7 +75,7 @@ def compute_candidate_params(max_param):
 def compute_scaled_weighted_ydotX(data):
     # the idea is to multiply y and X by weights, standardize them then compute the dot product
     # but realistically we have computational constraints so we need to chunck the data
-    wy = compute_wy(data) #ndarray
+    wy = u.compute_wy(data) #ndarray
     chuncks = u.make_chuncks(data) # indices of column chuncks
     dot = []
     for ind in chuncks:
