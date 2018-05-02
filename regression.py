@@ -8,20 +8,22 @@ import reg_main as r
 import useful_functions as u
 
 class regression:
-    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.):
+    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=500,epochs=10):
         self.fit_intercept = fit_intercept
         self.normalize = True # always normalize
         self.lr = lr
         self.decay = decay
         self.momentum = momentum
+        self.minibatch_size = minibatch_size
+        self.epochs = epochs
 
 
 class Lasso(regression):
-    def __init__(self,alpha='CV',CV_folds=3,epochs=10,**kwarg):
+    def __init__(self,alpha='CV',CV_folds=3,CV_epochs=10,**kwarg):
         super().__init__(**kwarg)
         self.alpha=alpha
         self.CV_folds=CV_folds
-        self.epochs = epochs
+        self.CV_epochs = CV_epochs
 
     def choose_param(self,data):
         # call this method if alpha is set to be 'CV'
@@ -33,16 +35,70 @@ class Lasso(regression):
 
     def fit(self,data):
         # TODO finish writing this function
-        # first weight the data, then scale the weighted data before fitting model
-        return
+        #  weight and scale the data before fitting model
+        num_SNPs,num_features = u.dim_h5(data.X)#TODO compute number of features and SNPs, i.e., row and col number of X
+        if self.alpha == 'CV':
+            self.alpha = self.choose_param(self,data)
+        model = Sequential()
+        model.add(Dense(1,input_dim=num_features,kernel_regularizer = regularizers.l1(self.alphai)
+        sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
+        model.compile(loss='mse',optimizer=sgd)
+        model.fit_generator(generator(data,self.minibatch_size),steps_per_epoch=num_SNPs//self.minibatch_size,epochs=self.epochs,verbose=0)
+        learned_coefs,learned_bias = model.get_weights()
+        return learned_coefs,learned_bias
 
+
+def generator(data,n):
+    """
+    Generates mini-batches of data
+    n = mini batch size
+    """
+    N = len(data.active_ind)
+    annotld = u.read_h5(data.X)
+    chisq = np.array(pd.read_csv(data.y,delim_whitespace=True)['CHISQ'])
+    w = np.array(pd.read_csv(data.weights,delim_whitespace=True).iloc[:,0])
+    num_batches = N//n
+    while True:
+        i=1
+        while i<=num_batches:
+            batch_ind = data.active_ind[n*(i-1):n*i]
+            batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,w,batch_ind)
+            yield batch_ws_annotld,batch_ws_chisq
+            i+=1
+        batch_ind = data.active_ind[n*(i-1):]+data.active_ind[:n-N%n]# the last batch concatenates what remains and the head of data
+        batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,w,batch_ind)
+        yield batch_ws_annotld,batch_ws_chisq
+
+
+def get_batch(annotld,chisq,w,batch_ind):
+    """
+    inputs:
+    data object
+    annotld = h5 dataset for annotation ld
+    chisq = entire (not only active) chisq statistics as ndarray
+    w = entire final weights as ndarray
+    batch_ind = the indices for this batch
+    outputs:
+    weighted scaled batch annotation ld as ndarray
+    weighted scaled batch chisq statistics as ndarray
+    """
+    batch_weights = w[batch_ind]
+    batch_chisq = chisq[batch_ind]
+    batch_annotld = annotld[batch_ind,:]
+    weights_to_multiply = np.sqrt(np.divide(1,batch_weights))
+    w_annotld = np.multiply(weights_to_multiply[np.newaxis].T,batch_annotld)
+    w_chisq = np.multiply(weights_to_multiply,batch_chisq)
+    ws_annotld = np.divide(np.subtract(w_annotld,data.weighted_meanX),data.weighted_stdX)
+    ws_chisq = np.divide(np.subtract(w_chisq,data.weighted_meany),data.weighted_stdy)
+    return ws_annotld,ws_chisq
+        
 
 def compute_cvlosses(candidate_params,data,kf,reg_method):
-   """
-     candidate_params: a list of candidate parameters
-     data: a data object to compute losses on
-     kf: object created by KFold, contains indices for train and validation sets
-     this function outputs an array of losses for the list of candidate_params
+    """
+    candidate_params: a list of candidate parameters
+    data: a data object to compute losses on
+    kf: object created by KFold, contains indices for train and validation sets
+    this function outputs an array of losses for the list of candidate_params
     """
     active_ss_array = u.read_chisq_from_ss(data.y,data.active_ind)
     losses = []
