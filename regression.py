@@ -34,13 +34,12 @@ class Lasso(regression):
         return candidate_params[np.argmin(cv_losses)] 
 
     def fit(self,data):
-        # TODO finish writing this function
         #  weight and scale the data before fitting model
-        num_SNPs,num_features = u.dim_h5(data.X)#TODO compute number of features and SNPs, i.e., row and col number of X
+        num_SNPs,num_features = u.dim_h5(data.X)#TODO compute dimensions of active X
         if self.alpha == 'CV':
             self.alpha = self.choose_param(self,data)
         model = Sequential()
-        model.add(Dense(1,input_dim=num_features,kernel_regularizer = regularizers.l1(self.alphai)
+        model.add(Dense(1,input_dim=num_features,kernel_regularizer = regularizers.l1(self.alpha)
         sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(data,self.minibatch_size),steps_per_epoch=num_SNPs//self.minibatch_size,epochs=self.epochs,verbose=0)
@@ -53,7 +52,7 @@ def generator(data,n):
     Generates mini-batches of data
     n = mini batch size
     """
-    N = len(data.active_ind)
+    N = self.active_len
     annotld = u.read_h5(data.X)
     chisq = np.array(pd.read_csv(data.y,delim_whitespace=True)['CHISQ'])
     w = np.array(pd.read_csv(data.weights,delim_whitespace=True).iloc[:,0])
@@ -135,7 +134,7 @@ def compute_scaled_weighted_ydotX(data):
     chuncks = u.make_chuncks(data) # indices of column chuncks
     dot = []
     for ind in chuncks:
-        wchunck = compute_weighted_chunck(data,ind)
+        wchunck = u.compute_weighted_chunck(data,ind)
         dot.append(wy.dot(wchunck))
     wydotwX = np.concatenate(dot,axis=0)
     scaled_weighted_ydotX = compute_scaledwydotwX_from_weighted(wydotwX,data)
