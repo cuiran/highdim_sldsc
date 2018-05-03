@@ -7,19 +7,77 @@ from memory_profiler import profile
 
 class data:
     def __init__(self,X,y,weights,active_ind):
-        self.X = X  # file name contain regressor related info, it's an h5 file
-        self.y = y  # file name contain target related info, it's a text file containing sumstats, chisq info
-        self.weights = weights  # file name contain weights related info
-        self.active_ind = active_ind # list of indices of X (also y and weights) that are currently in use
-        self._mean_X = None # mean per column of active X
-        self._std_X = None  # std percolumn of active X
-        self._mean_y = None # mean per col of active y
-        self._std_y = None  # std per col of active y
-        self._weighted_meanX = None # mean per column of weighted X
+        """
+        X is the .h5 filename that contains annotation ld with #SNP rows and #cell types columns, no header
+        y is the file name of text file containing formatted summary statistics information 
+            columns of such file are in order: SNP, A1, A2, N, CHISQ, Z
+        weights is the file name of text file that contain weights related information, 
+            it can be weights ld or the final weights
+        active_ind is a list that contains the endpoints of indices that are currently active.
+            For exampla if indices [1,2,4,5,6,8,9,12] are the active indices then 
+            active_ind equals to [[1,3],[4,7],[8,10],[12,13]]
+        active_len is the length of active rows
+        mean_X is the mean taken over rows of active X
+        std_X is the standard deviation taken over rows of active X
+        mean_y is the mean taken over active elements in CHISQ column of y
+        std_y is the standard deviation taken over active elements in CHISQ column of y
+        weighted_meanX is the mean taken over active rows of weighted X 
+        ...
+        """
+        self.X = X 
+        self.y = y
+        self.weights = weights
+        self.active_ind = active_ind
+        self._active_len = None
+        self._mean_X = None
+        self._std_X = None
+        self._mean_y = None
+        self._std_y = None
+        self._weighted_meanX = None
         self._weighted_stdX = None
         self._weighted_meany = None
         self._weighted_stdy = None
+
+    @property
+    def active_len(self):
+        if not self._active_len:
+            length = 0
+            for i in len(self.active_ind):
+                length += i[1]-i[0]
+            self._active_len = length
+        return self._active_len
+
+    @property
+    def mean_X(self):
+        if not self._mean_X:
+            d = u.read_h5(data.X)
+            sum_active_rows = 0
+            for i in self.active_ind:
+                start = i[0]
+                end = i[1]
+                sum_chunck = np.sum(d[start:end,:],axis=0)
+                sum_active_rows += sum_chunck
+            self._mean_X = np.divide(sum_active_rows,self.active_len)
+        return self._mean_X
+
+    @property
+    def std_X(self):
+        if not self._std_X:
+            d = u.read_h5(data.X)
+            sum_sqdiff = 0
+            for i in self.active_ind:
+                start = i[0]
+                end = i[1]
+                sum_sqdiff_chunck = np.sum((d[start:end,:] - self.mean_X)**2,axis=0)
+                sum_sqdiff += sum_sqdiff_chunck
+            self._std_X = np.sqrt(np.divide(sum_sqdiff,self.active_len))
+        return self._std_X
     
+    @property
+    def weighted_meanX(self):
+        if not self._weighted_meanX:
+            #TODO: compute mean for weighted data.
+             
 
 
 def match_SNPs(args):
@@ -33,6 +91,7 @@ def match_SNPs(args):
 
 
 def get_traintest_ind(args):
+    # TODO change code so that it outputs lists of lists of two elements
     chr_list = ['chr'+str(i) for i in range(1,23)]
     if args.leave_out in chr_list:
         chrsnp = pd.read_csv(args.annot_snplist,delim_whitespace=True)
@@ -43,7 +102,26 @@ def get_traintest_ind(args):
     else:
         #TODO:implement ability to process of a file of specified SNPs to leave out
         print('--leave-out functionality is not complete.')
-    return train_ind,test_ind
+    final_train_ind = get_endpoints(train_ind)
+    final_test_ind = get_endpoints(test_ind)
+    return final_train_ind,final_test_ind
+
+def get_endpoints(l):
+    """
+    input a list l. For example [1,2,4,5,6,8,9,12]
+    output a list of lists of two elements [[1,3],[4,7],[8,10],[12,13]]
+    """
+    i = 0
+    a = l[0]
+    endpoints = []
+    while i<len(l):
+        start = a
+        while a+1==l[i+1]:
+            i+=1
+            a=l[i]
+        end = a+1
+        endpoints.append([start,end])
+    return endpoints
 
 def compute_final_w(args,data):
     # concatenate weights in args.weights_ld
@@ -73,3 +151,7 @@ def weights_processing(args,original_data):
     weights_fname = args.output_folder+'final_weights.txt'
     df.to_csv(weights_fname,sep='\t',index=False)
     return
+
+def get_num_SNPs(args):
+    ss_df = pd.read_csv(args.y,delim_whitespace=True)
+    return ss_df.shape[0]
