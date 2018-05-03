@@ -76,8 +76,32 @@ class data:
     @property
     def weighted_meanX(self):
         if not self._weighted_meanX:
-            #TODO: compute mean for weighted data.
-             
+            d = u.read_h5(self.X)
+            r,c = d.shape
+            sum_active_weighted_rows = 0
+            for i in self.active_ind:
+                start = i[0]
+                end = i[1]
+                chunck_data = data(self.X,self.y,self.weights,[[start,end]])
+                weighted_chunck = u.compute_weighted_chunck(chunck_data,[0,c])
+                sum_active_weighted_rows += np.sum(weighted_chunck,axis=0)
+            self._weighted_meanX = np.divide(sum_active_weighted_rows,self.active_len)
+        return self._weighted_meanX
+
+    @property
+    def weighted_stdX(self):
+        if not self._weighted_stdX:
+            d = u.read_h5(self.X)
+            r,c = d.shape
+            sum_sqwdiff = 0
+            for i in self.active_ind:
+                start = i[0]
+                end = i[1]
+                chunck_data = data(self.X,self.y,self.weights,[[start,end]])
+                weighted_chunck = u.compute_weighted_chunck(chunck_data,[0,c])
+                sum_sqwdiff += np.sum((weighted_chunck - self.weighted_meanX)**2,axis=0)
+            self._weighted_stdX = np.sqrt(np.divide(sum_sqwdiff,self.active_len))
+        return self._weighted_stdX
 
 
 def match_SNPs(args):
