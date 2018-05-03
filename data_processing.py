@@ -114,13 +114,19 @@ def get_endpoints(l):
     i = 0
     a = l[0]
     endpoints = []
-    while i<len(l):
-        start = a
-        while a+1==l[i+1]:
+    start=a
+    while i<len(l)-1:
+        #pdb.set_trace()
+        if a+1 == l[i+1]:
+            a+=1
+            i+=1
+        else:
+            end = a+1
+            endpoints.append([start,end])
             i+=1
             a=l[i]
-        end = a+1
-        endpoints.append([start,end])
+            start=a
+    endpoints.append([start,l[-1]+1])
     return endpoints
 
 def compute_final_w(args,data):
