@@ -17,6 +17,20 @@ class regression:
         self.minibatch_size = minibatch_size
         self.epochs = epochs
 
+    def evaluate(self,data):
+        # used self.coef and self.intercept to compute predicted sumstats on data
+        # formula for chisq is N*annot_ld*self.coef + self.intercept
+        # compute the weighted sum of squared loss on data
+        d = u.read_h5(data.X)
+        val_annotld = concat_data(d,data.active_ind) # output one ndarray represent regressor matrix
+        val_chisq = concat_chisq(data.y,data.active_ind) # ndarray of validation chisq stats
+        val_weights = concat_weights(data.weights,data.active_ind) # ndarray of validation weights
+        pred_chisq = np.multiply(N,val_annotld.dot(self.coef))+self.intercept
+        ready_weights = np.divide(1,val_weights)
+        weighted_sumsqerror = ready_weights.dot((pred_chisq-val_chisq)**2)
+        return weighted_sumsqerror
+        
+         
 
 class Lasso(regression):
     def __init__(self,alpha='CV',CV_folds=3,CV_epochs=10,**kwarg):
@@ -43,54 +57,125 @@ class Lasso(regression):
         sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(data,self.minibatch_size),steps_per_epoch=num_SNPs//self.minibatch_size,epochs=self.epochs,verbose=0)
-        learned_coefs,learned_bias = model.get_weights()
-        return learned_coefs,learned_bias
+        learned_coef,_ = model.get_weights() # the learned intercept is the last element in the learned_coef array
+        true_coef,true_intercept = recover_coef_intercept(data,learned_coef)
+        self.coef = true_coef
+        self.intercept = true_intercept
+        return self.coef,self.intercept
 
+def concat_data(d,active_ind):
+    """ 
+    d is a h5py file object, d can be sliced
+    active_ind is a list that contains the endpoints of indices
+    output ndarray that's the result of concatenate all active indices of d
+    """
+    start,end = active_ind[0]
+    X = d[start:end,:]
+    if len(active_ind)==1:
+        return X
+    else:
+        for i in active_ind[1:]:
+            start,end = i
+            X = np.concatenate((X,d[start:end,:]),axis=0)
+        return X
+    
+
+def concat_weights(weights_file,active_ind):
+    w_df = pd.read_csv(weights_file,delim_whitespace=True)
+    start,end = active_ind[0]
+    w = w_df.iloc[start:end,0]
+    if len(active_ind) == 1:
+        return w
+    else:
+        for i in active_ind[1:]:
+            start,end = i
+            w = np.concatenate((w,w_df.iloc[start:end,0]),axis=0)
+        return w
+
+def concat_chisq(ss_file, active_ind):
+    ss_df = pd.read_csv(ss_file,delim_whitespace=True)
+    start,end = active_ind[0]
+    chisq = ss_df.loc[start:end,'CHISQ']
+    if len(active_ind) == 1:
+        return chisq
+    else:
+        for i in active_ind[1:]:
+            start,end = i
+            chisq = np.concatenate((chisq,ss_df.loc[start:end,'CHISQ']),axis=0)
+        return chisq
+
+def recover_coef_intercept(data,learned_coef):
+    """ Recover true coef and intercept from the learned coef
+    Learned coef is the coefficients for weighted scaled data
+    The last element of learned coef is the intercept term
+    """
+    std_tomulti_w = get_std_tomulti_w(data) # standard deviation of ready-to-multiply weights
+    weighted_stdX_with_intercept = np.append(data.weighted_stdX,std_tomulti_w)
+    Ntrue_coef = np.multiply(data.weighted_stdy,np.divide(learned_coefs,weighted_stdX_with_intercept))
+    true_coef = np.divide(Ntrue_coef,data.N)
+    return true_coef[:-1],true_coef[-1] 
+    
 
 def generator(data,n):
     """
     Generates mini-batches of data
     n = mini batch size
     """
+    active_ind = expand_ind(data.active_ind) # TODO change data.active_ind in this function into active_ind
     N = self.active_len
     annotld = u.read_h5(data.X)
     chisq = np.array(pd.read_csv(data.y,delim_whitespace=True)['CHISQ'])
     w = np.array(pd.read_csv(data.weights,delim_whitespace=True).iloc[:,0])
+    to_multiply_w = np.sqrt(np.divide(1,w)) # the weights that are ready to be multiplied into y and X
+    scaled_tomulti_w = scale_array(to_multiply_w)
     num_batches = N//n
     while True:
         i=1
         while i<=num_batches:
-            batch_ind = data.active_ind[n*(i-1):n*i]
+            batch_ind = active_ind[n*(i-1):n*i]
             batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,w,batch_ind)
             yield batch_ws_annotld,batch_ws_chisq
             i+=1
-        batch_ind = data.active_ind[n*(i-1):]+data.active_ind[:n-N%n]# the last batch concatenates what remains and the head of data
-        batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,w,batch_ind)
+        batch_ind = active_ind[n*(i-1):]+active_ind[:n-N%n]# the last batch concatenates what remains and the head of data
+        batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,to_multiply_w,scaled_tomulti_w,batch_ind)
         yield batch_ws_annotld,batch_ws_chisq
 
+def expand_ind(endpoints_list):
+    l = list[]
+    for i in endpoints_list:
+        l += [x for x in range(i[0],i[1])]
+    return l
 
-def get_batch(annotld,chisq,w,batch_ind):
+def get_batch(annotld,chisq,to_multiply_w,scaled_tomulti_w,batch_ind):
     """
     inputs:
     data object
     annotld = h5 dataset for annotation ld
     chisq = entire (not only active) chisq statistics as ndarray
-    w = entire final weights as ndarray
+    to_multiply_w = ndarray of weights that are ready to be multiplied into y and X
+    scaled_to_multi_w = scaled full ready_to_multiply weights as ndarray
     batch_ind = the indices for this batch
     outputs:
     weighted scaled batch annotation ld as ndarray
     weighted scaled batch chisq statistics as ndarray
     """
-    batch_weights = w[batch_ind]
     batch_chisq = chisq[batch_ind]
     batch_annotld = annotld[batch_ind,:]
-    weights_to_multiply = np.sqrt(np.divide(1,batch_weights))
-    w_annotld = np.multiply(weights_to_multiply[np.newaxis].T,batch_annotld)
-    w_chisq = np.multiply(weights_to_multiply,batch_chisq)
-    ws_annotld = np.divide(np.subtract(w_annotld,data.weighted_meanX),data.weighted_stdX)
-    ws_chisq = np.divide(np.subtract(w_chisq,data.weighted_meany),data.weighted_stdy)
+    weights_to_multiply = to_multiply_w[batch_ind,:]
+    batch_scaled_tomulti_w = scaled_tomulti_w[batch_ind,:]
+    w_annotld = np.multiply(weights_to_multiply[np.newaxis].T,batch_annotld) # w*X
+    w_chisq = np.multiply(weights_to_multiply,batch_chisq) # w*y
+    ws_annotld = np.divide(np.subtract(w_annotld,data.weighted_meanX),data.weighted_stdX) # (w*X - mean(w*X))/std(w*X)
+    ws_annotld_with_intercept = attach_column(ws_annotld,batch_scaled_tomulti_w) # add column of scaled_tomulti_w to regressors
+    ws_chisq = np.divide(np.subtract(w_chisq,data.weighted_meany),data.weighted_stdy) #(w*y - mean(w*y))/std(w*y)
     return ws_annotld,ws_chisq
-        
+
+def attach_column(a,b):
+    """ Given ndarray a (2 dimensional) and b a one-dim array,
+    attach b to the end of a as a column
+    """
+    return np.concatenate((a,b[newaxis].T),axis=1) 
+    
 
 def compute_cvlosses(candidate_params,data,kf,reg_method):
     """
@@ -116,7 +201,7 @@ def compute_cvlosses(candidate_params,data,kf,reg_method):
 def get_candidate_params_for_scaled_weighted_data(data):
     # assuming the input data is unscaled, but has attributes mean and std
     scaled_weighted_ydotX = compute_scaled_weighted_ydotX(data) #ndarray
-    N = len(data.active_ind)
+    N = data.active_len
     max_param = np.max(np.divide(np.abs(scaled_weighted_ydotX),N)) 
     # this formula for max_param is from Regularization Paths for Generalized Linear Models via Coordinate Descent by Friedman et. al.
     candidate_params = compute_candidate_params(max_param)
@@ -143,6 +228,6 @@ def compute_scaled_weighted_ydotX(data):
 
 def compute_scaledwydotwX_from_weighted(wydotwX,data):
     # yst\dot Xst = (y\dot X - M\mu_y \mu_X) / (\sigma_y \sigma_X)
-    M = len(data.active_ind)
+    M = data.active_len
     wyst_dot_wXst = np.divide(np.subtract(wydotwX,np.multiply(M,np.multiply(data.weighted_meanX,data.weighted_meany))),np.multiply(data.weighted_stdX,weighted_stdy))
     return wyst_dot_wXst
