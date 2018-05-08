@@ -23,6 +23,7 @@ class data:
         std_y is the standard deviation taken over active elements in CHISQ column of y
         weighted_meanX is the mean taken over active rows of weighted X 
         ...
+        N is the number of individuals
         """
         self.X = X 
         self.y = y
@@ -37,6 +38,7 @@ class data:
         self._weighted_stdX = None
         self._weighted_meany = None
         self._weighted_stdy = None
+        self._N = None
 
     @property
     def active_len(self):
@@ -53,8 +55,7 @@ class data:
             d = u.read_h5(data.X)
             sum_active_rows = 0
             for i in self.active_ind:
-                start = i[0]
-                end = i[1]
+                start,end = i
                 sum_chunck = np.sum(d[start:end,:],axis=0)
                 sum_active_rows += sum_chunck
             self._mean_X = np.divide(sum_active_rows,self.active_len)
@@ -66,8 +67,7 @@ class data:
             d = u.read_h5(data.X)
             sum_sqdiff = 0
             for i in self.active_ind:
-                start = i[0]
-                end = i[1]
+                start,end = i
                 sum_sqdiff_chunck = np.sum((d[start:end,:] - self.mean_X)**2,axis=0)
                 sum_sqdiff += sum_sqdiff_chunck
             self._std_X = np.sqrt(np.divide(sum_sqdiff,self.active_len))
@@ -103,6 +103,12 @@ class data:
             self._weighted_stdX = np.sqrt(np.divide(sum_sqwdiff,self.active_len))
         return self._weighted_stdX
 
+    @property
+    def N(self):
+        if not self._N:
+            ss_df = pd.read_csv(self.y,delim_whitespace=True)
+            self._N = np.mean(ss_df['N'])
+        return self._N
 
 def match_SNPs(args):
     annot_snps = pd.read_csv(args.annot_snplist,delim_whitespace=True)['SNP'].tolist()
