@@ -189,5 +189,5 @@ def weights_processing(args,original_data):
     return
 
 def get_num_SNPs(args):
-    ss_df = pd.read_csv(args.y,delim_whitespace=True)
+    ss_df = pd.read_csv(args.sumstats,delim_whitespace=True)
     return ss_df.shape[0]

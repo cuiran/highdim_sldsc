@@ -53,7 +53,7 @@ class Lasso(regression):
         if self.alpha == 'CV':
             self.alpha = self.choose_param(self,data)
         model = Sequential()
-        model.add(Dense(1,input_dim=num_features,kernel_regularizer = regularizers.l1(self.alpha)
+        model.add(Dense(1,input_dim=num_features,kernel_regularizer = regularizers.l1(self.alpha)))
         sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(data,self.minibatch_size),steps_per_epoch=num_SNPs//self.minibatch_size,epochs=self.epochs,verbose=0)
@@ -141,7 +141,7 @@ def generator(data,n):
         yield batch_ws_annotld,batch_ws_chisq
 
 def expand_ind(endpoints_list):
-    l = list[]
+    l = []
     for i in endpoints_list:
         l += [x for x in range(i[0],i[1])]
     return l

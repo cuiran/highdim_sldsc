@@ -41,8 +41,7 @@ if __name__=='__main__':
     parser.add_argument('--ld',help='The .h5 file combining ldscores for all annotations')
     parser.add_argument('--sumstats',help='Text file of formatted summary statistics with columns SNP, A1, A2, N, CHISQ, Z, where CHISQ is Z^2')
     parser.add_argument('--weights_ld',help='The user input weights. Chrom separated "weights.#chr.l2.ldscore.gz" files input as --weights weights.')
-    parser.add_argument('--annot-snplist',help='The text file listing all SNPs used to create annotation ld. This file should contain two columns CHR and SNP. 
-                        The order matches the order of SNPs used in --ld.')
+    parser.add_argument('--annot-snplist',help='The text file listing all SNPs used to create annotation ld. This file should contain two columns CHR and SNP. The order matches the order of SNPs used in --ld.')
     parser.add_argument('--leave-out',help='Specify the region to leave out, for example, chr22.')
     parser.add_argument('--reg-method',help='Name of the method to run regression with. Choose among OLS,Lasso,Lasso+OLS,elnet,grpLasso,skLassoCV,skOLS')
     parser.add_argument('--output-folder',help='Point to a location where the program can store output files')
