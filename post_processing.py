@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 def process(args,reg,data):
     # store coefficient and intercept in file 
@@ -8,13 +9,13 @@ def process(args,reg,data):
     coef_df.to_csv(coef_fname,index=False,sep='\t')
     intercept_fname = args.output_folder+'intercept.txt'
     f = open(intercept_fname,'w')
-    f.write("INTERCEPT")
-    f.write(reg.intercept)
+    f.write("INTERCEPT \n")
+    f.write(str(reg.intercept))
     f.close()
     sse = reg.evaluate(data)
     sse_fname = args.output_folder+'weighted_error.txt'
     fi = open(sse_fname,'w')
-    fi.write("WSSE")
-    fi.write(sse)
+    fi.write("WSSE \n")
+    fi.write(str(sse))
     fi.close()
     return 

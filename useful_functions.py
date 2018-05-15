@@ -1,6 +1,8 @@
-mport numpy as np
+import numpy as np
 import pandas as pd
 import h5py
+from sklearn import preprocessing
+import pdb
 
 def read_h5(h5file):
     # the key of the h5file has to be 'dataset' for this function to work properly
@@ -17,8 +19,12 @@ def h5_sum_all(h5file, active_ind):
 def h5_sum_cols(h5file, active_ind):
     # sum columns in h5file, must have key "dataset"
     d = read_h5(h5file)
-    s = np.sum(raw_chunck(d, active_ind), axis=1)
-    return s
+    big_chunck = raw_chunck(d,active_ind)
+    if big_chunck.ndim == 1:
+        return big_chunck
+    else:
+        s = np.sum(big_chunck, axis=1)
+        return s
 
 def col_strip(X, list_list_ind):
     # Given a matrix X, and a list of list of start-end indices, cut X by columns of those indcies
@@ -35,7 +41,22 @@ def raw_chunck(array, list_list_ind):
     big_chunck = np.concatenate(chuncks)
     return big_chunck
 
-
+def get_active(ndarray, active_ind):
+    # for ndarray of dim >=1 get rows that are in active_ind range and concatenate them
+    # output one ndarray with the active_ind sliced out from the input ndarray
+    if ndarray.ndim == 1:
+        start,end = active_ind[0]
+        active_array = ndarray[start:end]
+        for i in range(1,len(active_ind)):
+            start,end = active_ind[i]
+            active_array = np.concatenate((active_array,ndarray[start:end]))
+        return active_array
+    else:
+        active_array = ndarray[active_ind[0][0]:active_ind[0][1],:]
+        for i in range(1,len(active_ind)):
+            start,end = active_ind[i]
+            active_array = np.concatenate(active_array,ndarray[start:end,:],axis=0)
+        return active_array
 
 def read_chisq_from_ss(ss_file, active_ind):
     # output active chisq as an ndarray
@@ -51,15 +72,18 @@ def chisq_sum_all(ss_file, active_ind):
 
 
 #NAME CHANGE:  make_chuncks --> make_strips
-def make_strips(data, stripsize=100):
+def make_strips(data, stripsize=1):
     # stripping data.X by column (After chuncking by raw), default strip size is 100
     # output an ordered list of list of ordered indices
     X = read_h5(data.X)
-    ncols = X.shape[1]
-    if stripsize > ncols:
-        raise ValueError('The chunck size is larger than the size of data')
+    if X.ndim == 1:
+        ncols = 1
     else:
-        inx1 = range(0, ncols, stripsize)+ [ncols]
+        ncols = X.shape[1]
+    if stripsize > ncols:
+        raise ValueError('The strip size is larger than the size of data')
+    else:
+        inx1 = [x for x in range(0, ncols, stripsize)] + [ncols]
         inx_list = [inx1[i:i + 2] for i in range(len(inx1) - 1)]
     return inx_list
 
@@ -73,11 +97,14 @@ def compute_weighted_chunck(data, ind):
 # Reading X and weights
     X = read_h5(data.X)
     weights_tb = pd.read_csv(data.weights, delim_whitespace=True)
-    weights = np.array(weights_tb['L2'])
+    weights = np.array(weights_tb['WEIGHT'])
 
 # Chuncking X by raw (Acitve indcies) then stripping by col (ind)
     active_X = raw_chunck(X, data.active_ind)
-    active_X_strip = active_X[:,ind[0]:ind[1]]
+    if active_X.ndim == 1:
+        active_X_strip = active_X
+    else:
+        active_X_strip = active_X[:,ind[0]:ind[1]]
 
 # Chuncking weights by raw (Acitve indcies) then stripping by col (ind)
     active_weights = raw_chunck(weights, data.active_ind)
@@ -93,15 +120,17 @@ def compute_wy(data):
 
 # Reading y and chuncking it
     y_tb = pd.read_csv(data.y, delim_whitespace=True)
-    y = np.array(y_tb['CHISQ'])
-    y = raw_chunck(y, data.active_ind)
+    chisq = np.array(y_tb['CHISQ'])
+    active_chisq = get_active(chisq, data.active_ind)
 # Reading weights and chuncking
     weights_tb = pd.read_csv(data.weights, delim_whitespace=True)
-    weights = np.array(weights_tb['L2'])
+    weights = np.array(weights_tb['WEIGHT'])
     weights = raw_chunck(weights, data.active_ind)
 # weighting yi*(1/sqrt(wi))
     weights_inv_sqr = 1 / np.sqrt(weights)
-    weighted_y = np.multiply(y,weights_inv_sqr)
+    weighted_y = np.multiply(active_chisq,weights_inv_sqr)
 
     return weighted_y
 
+def stdize_array(array):
+    return preprocessing.scale(array)

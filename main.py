@@ -20,11 +20,11 @@ def highdim_sldsc(args):
     """
     d.match_SNPs(args)
     num_SNPs = d.get_num_SNPs(args)
-    original_data = d.data(args.ld,args.sumstats,args.weights_ld,range(num_SNPs))
+    original_data = d.data(args.ld,args.sumstats,args.weights_ld,[[0,num_SNPs]])
     # TODO add shuffling data step
     train_ind,test_ind = d.get_traintest_ind(args)
     # train_ind and test_ind are lists of lists of two elements containing end points TODO change code related to active_ind
-    d.weights_processing(args,original_data) # compute final weights and store in file
+    weights_fname = d.weights_processing(args,original_data) # compute final weights and store in file
     # form train and test data objects
     train_data = d.data(args.ld,args.sumstats,weights_fname,train_ind)
     test_data = d.data(args.ld,args.sumstats,weights_fname,test_ind)

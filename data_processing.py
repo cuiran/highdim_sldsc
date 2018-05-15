@@ -36,15 +36,26 @@ class data:
         self._std_y = None
         self._weighted_meanX = None
         self._weighted_stdX = None
-        self._weighted_meany = None
-        self._weighted_stdy = None
+        self._weighted_meany = None 
+        self._weighted_stdy = None 
         self._N = None
+        self._num_features = None
+
+    @property
+    def num_features(self):
+        if not self._num_features:
+            d = u.read_h5(self.X)
+            if d.ndim == 1:
+                self._num_features = 1
+            else:
+                self._num_features = d.shape[1]
+        return self._num_features
 
     @property
     def active_len(self):
         if not self._active_len:
             length = 0
-            for i in len(self.active_ind):
+            for i in self.active_ind:
                 length += i[1]-i[0]
             self._active_len = length
         return self._active_len
@@ -77,7 +88,10 @@ class data:
     def weighted_meanX(self):
         if not self._weighted_meanX:
             d = u.read_h5(self.X)
-            r,c = d.shape
+            if d.ndim == 1:
+                r,c = d.shape[0],1
+            else:
+                r,c = d.shape
             sum_active_weighted_rows = 0
             for i in self.active_ind:
                 start = i[0]
@@ -92,7 +106,10 @@ class data:
     def weighted_stdX(self):
         if not self._weighted_stdX:
             d = u.read_h5(self.X)
-            r,c = d.shape
+            if d.ndim == 1:
+                r,c = d.shape[0],1
+            else:
+                r,c = d.shape
             sum_sqwdiff = 0
             for i in self.active_ind:
                 start = i[0]
@@ -104,11 +121,36 @@ class data:
         return self._weighted_stdX
 
     @property
+    def weighted_meany(self):
+        if not self._weighted_meany:
+            full_weights = np.array(pd.read_csv(self.weights,delim_whitespace=True).iloc[:,-1])
+            full_y = np.array(pd.read_csv(self.y,delim_whitespace=True)['CHISQ'])
+            active_weights = u.get_active(full_weights,self.active_ind)
+            active_y = u.get_active(full_y,self.active_ind)
+            wy = active_weights*active_y
+            self._weighted_meany = np.mean(wy)
+            self._weighted_stdy = np.std(wy)
+        return self._weighted_meany
+
+    @property
+    def weighted_stdy(self):
+        if not self._weighted_stdy:
+            full_weights = np.array(pd.read_csv(self.weights,delim_whitespace=True).iloc[:,-1])
+            full_y = np.array(pd.read_csv(self.y,delim_whitespace=True)['CHISQ'])
+            active_weights = u.get_active(full_weights,self.active_ind)
+            active_y = u.get_active(full_y,self.active_ind)
+            wy = active_weights*active_y
+            self._weighted_meany = np.mean(wy)
+            self._weighted_stdy = np.std(wy)
+        return self._weighted_stdy
+
+    @property
     def N(self):
         if not self._N:
             ss_df = pd.read_csv(self.y,delim_whitespace=True)
             self._N = np.mean(ss_df['N'])
         return self._N
+
 
 def match_SNPs(args):
     annot_snps = pd.read_csv(args.annot_snplist,delim_whitespace=True)['SNP'].tolist()
@@ -146,7 +188,6 @@ def get_endpoints(l):
     endpoints = []
     start=a
     while i<len(l)-1:
-        #pdb.set_trace()
         if a+1 == l[i+1]:
             a+=1
             i+=1
@@ -159,18 +200,28 @@ def get_endpoints(l):
     endpoints.append([start,l[-1]+1])
     return endpoints
 
+def concat_weights(weights_fname,chr_list):
+    # for the chromosomes in chr_list, concatenates corresponding weights
+    # weights_fname is the file name that stops right before chrom number
+    # for example if weights files are "weights.1.l2.ldscore.gz" ... "weights.22.l2.ldscore.gz"
+    # then weights_fname should be "weights."
+    # chr_list is the list of strings ['1','2'...] representing chromosomes that we would like to concatenate the weights of
+    # assuming the column contains weights information is the last column
+    weights_fnames = [weights_fname + x + '.l2.ldscore.gz' for x in chr_list]
+    weights_dfs = [pd.read_csv(x,delim_whitespace=True) for x in weights_fnames]
+    to_concat = [df.iloc[:,-1] for df in weights_dfs]
+    weights = np.concatenate(to_concat,axis=0)
+    return weights
+    
+
 def compute_final_w(args,data):
     # concatenate weights in args.weights_ld
     # this is the part of final weights that correct some of the correlated errors
     chr_list = [str(i) for i in range(1,23)]
-    weights_fnames = [args.weights_ld+x+'.l2.ldscore.gz' for x in chr_list]
-    weights_dfs = [pd.read_csv(x,delim_whitespace=True) for x in weights_fnames]
-    to_concat = [df.iloc[:,-1] for df in weights_dfs]
-    weights_corr = np.concatenate(to_concat,axis=0)
-    weights_corr = np.fmax(weights_corr,1.0) # prevent inverse from being too large
+    concated_weights = concat_weights(data.weights,chr_list) 
+    weights_corr = np.fmax(concated_weights,1.0) # prevent inverse from being too large
     # compute weights that correct some of the heteroskedasticity
-    M = len(data.active_ind)
-    M = float(M)
+    M = float(data.active_len)
     sum_trainld = u.h5_sum_all(data.X,data.active_ind)
     sum_trainss = u.chisq_sum_all(data.y,data.active_ind)
     l = sum_trainld/M
@@ -183,10 +234,10 @@ def compute_final_w(args,data):
 
 def weights_processing(args,original_data):
     final_weights = compute_final_w(args,original_data)
-    df = pd.DataFrame(data=final_weights,columns=['TRUE_W'])
+    df = pd.DataFrame(data=final_weights,columns=['WEIGHT'])
     weights_fname = args.output_folder+'final_weights.txt'
     df.to_csv(weights_fname,sep='\t',index=False)
-    return
+    return weights_fname
 
 def get_num_SNPs(args):
     ss_df = pd.read_csv(args.sumstats,delim_whitespace=True)
