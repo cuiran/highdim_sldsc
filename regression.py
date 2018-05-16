@@ -69,7 +69,8 @@ class Lasso(regression):
         # TODO adding intercept as a feature regularizes the intercept, which is NOT what we want. Fix this.
         sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
-        model.fit_generator(generator(data,self.minibatch_size),steps_per_epoch=data.active_len//self.minibatch_size,epochs=self.epochs,verbose=1)
+        model.fit_generator(generator(data,self.minibatch_size),
+                            steps_per_epoch=data.active_len//self.minibatch_size,epochs=self.epochs,verbose=1)
         learned_coef,_ = model.get_weights() # the learned intercept is the last element in the learned_coef array
         true_coef,true_intercept = recover_coef_intercept(data,learned_coef)
         self.coef = true_coef
@@ -159,7 +160,8 @@ def generator(data,n):
             batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,to_multiply_w,stdized_tomulti_w,batch_ind)
             i+=1
             yield batch_ws_annotld,batch_ws_chisq
-        batch_ind = active_ind[n*(i-1):]+active_ind[:n-len(active_ind)+n*(i-1)]# the last batch concatenates what remains and the head of data
+        # the last batch concatenates what remains and the head of data
+        batch_ind = active_ind[n*(i-1):]+active_ind[:n-len(active_ind)+n*(i-1)]
         batch_ind.sort()
         batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,to_multiply_w,stdized_tomulti_w,batch_ind)
         yield batch_ws_annotld,batch_ws_chisq
@@ -269,5 +271,6 @@ def compute_scaled_weighted_ydotX(data):
 def compute_scaledwydotwX_from_weighted(wydotwX,data):
     # yst\dot Xst = (y\dot X - M\mu_y \mu_X) / (\sigma_y \sigma_X)
     M = data.active_len
-    wyst_dot_wXst = np.divide(np.subtract(wydotwX,np.multiply(M,np.multiply(data.weighted_meanX,data.weighted_meany))),np.multiply(data.weighted_stdX,data.weighted_stdy))
+    wyst_dot_wXst = np.divide(np.subtract(wydotwX,np.multiply(M,np.multiply(data.weighted_meanX,data.weighted_meany)))
+                            ,np.multiply(data.weighted_stdX,data.weighted_stdy))
     return wyst_dot_wXst

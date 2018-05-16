@@ -165,7 +165,6 @@ def match_SNPs(args):
 
 
 def get_traintest_ind(args):
-    # TODO change code so that it outputs lists of lists of two elements
     chr_list = ['chr'+str(i) for i in range(1,23)]
     if args.leave_out in chr_list:
         chrsnp = pd.read_csv(args.annot_snplist,delim_whitespace=True)
