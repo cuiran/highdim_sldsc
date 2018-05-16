@@ -51,3 +51,21 @@ def process(args,train_data):
     s_weights_df = pd.DataFrame(data=weights_scaled,columns=['SCALED_W'])
     weights_fname = args.output_folder+'scaled_weights.txt'
     s_weights_df.to_csv(weights_fname,sep='\t',index=False)
+
+#def get_active(ndarray, active_ind):
+#    # for ndarray of dim >=1 get rows that are in active_ind range and concatenate them
+#    # output one ndarray with the active_ind sliced out from the input ndarray
+#    if ndarray.ndim == 1:
+#        start,end = active_ind[0]
+#        active_array = ndarray[start:end]
+#        for i in range(1,len(active_ind)):
+#            start,end = active_ind[i]
+#            active_array = np.concatenate((active_array,ndarray[start:end]))
+#        return active_array
+#    else:
+#        active_array = ndarray[active_ind[0][0]:active_ind[0][1],:]
+#        for i in range(1,len(active_ind)):
+#            start,end = active_ind[i]
+#            active_array = np.concatenate(active_array,ndarray[start:end,:],axis=0)
+#        return active_array
+
