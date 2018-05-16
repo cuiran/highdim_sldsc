@@ -126,8 +126,9 @@ class data:
             full_weights = np.array(pd.read_csv(self.weights,delim_whitespace=True).iloc[:,-1])
             full_y = np.array(pd.read_csv(self.y,delim_whitespace=True)['CHISQ'])
             active_weights = u.get_active(full_weights,self.active_ind)
+            to_multiply_w = np.divide(1,np.sqrt(active_weights))
             active_y = u.get_active(full_y,self.active_ind)
-            wy = active_weights*active_y
+            wy = to_multiply_w*active_y
             self._weighted_meany = np.mean(wy)
             self._weighted_stdy = np.std(wy)
         return self._weighted_meany
@@ -138,8 +139,9 @@ class data:
             full_weights = np.array(pd.read_csv(self.weights,delim_whitespace=True).iloc[:,-1])
             full_y = np.array(pd.read_csv(self.y,delim_whitespace=True)['CHISQ'])
             active_weights = u.get_active(full_weights,self.active_ind)
+            to_multiply_w = np.divide(1,np.sqrt(active_weights))
             active_y = u.get_active(full_y,self.active_ind)
-            wy = active_weights*active_y
+            wy = to_multiply_w*active_y
             self._weighted_meany = np.mean(wy)
             self._weighted_stdy = np.std(wy)
         return self._weighted_stdy
@@ -230,6 +232,7 @@ def compute_final_w(args,data):
     weights_hetero = 2*((Ntau_hat*u.h5_sum_cols(data.X,data.active_ind)+1)**2)
     # multiply heteroskedasticity weights with correlation weights
     final_weights = np.multiply(weights_hetero,weights_corr)
+    final_weights = np.fmax(final_weights,1.0)
     return final_weights
 
 def weights_processing(args,original_data):

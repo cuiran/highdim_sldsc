@@ -134,3 +134,18 @@ def compute_wy(data):
 
 def stdize_array(array):
     return preprocessing.scale(array)
+
+def expand_ind(endpoints_list):
+    l = []
+    for i in endpoints_list:
+        l += [x for x in range(i[0],i[1])]
+    return l
+
+def convert_to_original_ind(active_ind,new_ind):
+    # active_ind is a list of lists of endpoints
+    # new_ind is a list of indices, this is the indices of data that's been slices according to active_ind
+    # goal is to convert new_ind to the indices based on the original data
+    # for example active_ind = [[4,10]], new_ind = [0,1,2], the output should be [4,5,6]
+    expanded_active_ind = expand_ind(active_ind)
+    new_active_ind = [expanded_active_ind[i] for i in new_ind]
+    return new_active_ind

@@ -13,7 +13,7 @@ import useful_functions as u
 import pdb
 
 class regression:
-    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=10):
+    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=20):
         self.fit_intercept = fit_intercept
         self.normalize = True # always normalize
         self.lr = lr
@@ -66,6 +66,7 @@ class Lasso(regression):
             print('choosen alpha',self.alpha)
         model = Sequential()
         model.add(Dense(1,input_dim=data.num_features+1,kernel_regularizer = regularizers.l1(self.alpha)))
+        # TODO adding intercept as a feature regularizes the intercept, which is NOT what we want. Fix this.
         sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(data,self.minibatch_size),steps_per_epoch=data.active_len//self.minibatch_size,epochs=self.epochs,verbose=1)
@@ -142,7 +143,7 @@ def generator(data,n):
     Generates mini-batches of data
     n = mini batch size
     """
-    active_ind = expand_ind(data.active_ind) # TODO change data.active_ind in this function into active_ind
+    active_ind = u.expand_ind(data.active_ind) # TODO change data.active_ind in this function into active_ind
     num_active_samples = data.active_len
     annotld = u.read_h5(data.X)
     chisq = np.array(pd.read_csv(data.y,delim_whitespace=True)['CHISQ'])
@@ -162,12 +163,6 @@ def generator(data,n):
         batch_ind.sort()
         batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,to_multiply_w,stdized_tomulti_w,batch_ind)
         yield batch_ws_annotld,batch_ws_chisq
-
-def expand_ind(endpoints_list):
-    l = []
-    for i in endpoints_list:
-        l += [x for x in range(i[0],i[1])]
-    return l
 
 def get_batch(data,annotld,chisq,to_multiply_w,stdized_tomulti_w,batch_ind):
     """
@@ -222,6 +217,8 @@ def compute_cvlosses(candidate_params,data,kf,reg_method):
     for param in candidate_params:
         cv_loss = 0
         for train_ind,val_ind in kf.split(active_ss_array):
+            train_ind = u.convert_to_original_ind(data.active_ind,train_ind)
+            val_ind = u.convert_to_original_ind(data.active_ind,val_ind)
             train_active_ind = d.get_endpoints(train_ind)
             val_active_ind = d.get_endpoints(val_ind)
             train_obj = d.data(data.X,data.y,data.weights,train_active_ind)
@@ -229,6 +226,7 @@ def compute_cvlosses(candidate_params,data,kf,reg_method):
             if reg_method == 'Lasso':
                 cv_lasso = regr.Lasso(alpha = param)
                 cv_lasso.alpha = param
+                cv_lasso.epochs = cv_lasso.CV_epochs
                 cv_lasso.fit(train_obj)
                 #TODO this is hard coded for Lasso because there's a weird bug about invalid index to scalar variable if I use r.perform_regression
                 cv_lasso.evaluate(val_obj) 
