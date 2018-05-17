@@ -11,6 +11,7 @@ import reg_main as r
 import regression as regr
 import useful_functions as u
 import pdb
+import optimizers as op
 
 class regression:
     def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=20):
@@ -67,7 +68,8 @@ class Lasso(regression):
         model = Sequential()
         model.add(Dense(1,input_dim=data.num_features+1,kernel_regularizer = regularizers.l1(self.alpha)))
         # TODO adding intercept as a feature regularizes the intercept, which is NOT what we want. Fix this.
-        sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
+        sgd = op.SGDL1(lr=self.lr,decay=self.decay,momentum=self.momentum)
+        pdb.set_trace()
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(data,self.minibatch_size),
                             steps_per_epoch=data.active_len//self.minibatch_size,epochs=self.epochs,verbose=1)
