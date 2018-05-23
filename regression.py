@@ -12,9 +12,10 @@ import regression as regr
 import useful_functions as u
 import pdb
 import optimizers as op
+import regularizers as reg
 
 class regression:
-    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=20):
+    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=200):
         self.fit_intercept = fit_intercept
         self.normalize = True # always normalize
         self.lr = lr
@@ -44,8 +45,8 @@ class regression:
          
 
 class Lasso(regression):
-    def __init__(self,alpha='CV',CV_folds=3,CV_epochs=10,**kwarg):
-        super().__init__(**kwarg)
+    def __init__(self,alpha='CV',CV_folds=3,CV_epochs=100,**kwargs):
+        super().__init__(**kwargs)
         self.alpha=alpha
         self.CV_folds=CV_folds
         self.CV_epochs = CV_epochs
@@ -66,10 +67,9 @@ class Lasso(regression):
             self.alpha = self.choose_param(data)
             print('choosen alpha',self.alpha)
         model = Sequential()
-        model.add(Dense(1,input_dim=data.num_features+1,kernel_regularizer = regularizers.l1(self.alpha)))
-        # TODO adding intercept as a feature regularizes the intercept, which is NOT what we want. Fix this.
-        sgd = op.SGDL1(lr=self.lr,decay=self.decay,momentum=self.momentum)
-        pdb.set_trace()
+        model.add(Dense(1,input_dim=data.num_features+1))
+        sgd = op.SGDL1(lr=self.lr,decay=self.decay,momentum=self.momentum,regularizer=self.alpha)
+        #sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(data,self.minibatch_size),
                             steps_per_epoch=data.active_len//self.minibatch_size,epochs=self.epochs,verbose=1)
