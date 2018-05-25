@@ -14,7 +14,7 @@ def shrink_weights_fn_creator(weight_list, alpha=0.01):
 
     # create a function that returns the L1_metric and shrinks weights via
     # updates.
-    return K.function(weight_list, [L1_metric], updates=updates)
+    return K.function([], [L1_metric], updates=updates)
 
 
 class L1_update(Callback):
@@ -23,6 +23,5 @@ class L1_update(Callback):
         self.weights = weights_to_shrink
 
     def on_batch_end(self,batch, logs={}):
-        l1 = self.shrink_weights_fn(self.weights)
-        print(l1[0])
-
+        l1 = self.shrink_weights_fn([])
+        print("L1", l1[0])
