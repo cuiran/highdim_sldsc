@@ -11,8 +11,7 @@ import reg_main as r
 import regression as regr
 import useful_functions as u
 import pdb
-import optimizers as op
-import regularizers as reg
+import shrink
 
 class regression:
     def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=200):
@@ -68,12 +67,14 @@ class Lasso(regression):
             print('choosen alpha',self.alpha)
         model = Sequential()
         model.add(Dense(1,input_dim=data.num_features+1))
-        sgd = op.SGDL1(lr=self.lr,decay=self.decay,momentum=self.momentum,regularizer=self.alpha)
-        #sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
+        sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(data,self.minibatch_size),
-                            steps_per_epoch=data.active_len//self.minibatch_size,epochs=self.epochs,verbose=1)
-        learned_coef,_ = model.get_weights() # the learned intercept is the last element in the learned_coef array
+                            steps_per_epoch=data.active_len//self.minibatch_size,
+                            epochs=self.epochs,verbose=1,
+                            callbacks = [shrink.L1_update(model.trainable_weights[:1],lr=self.lr,regularizer=self.alpha)])
+        learned_coef,_ = model.get_weights() 
+        # the learned intercept is the last element in the learned_coef array
         true_coef,true_intercept = recover_coef_intercept(data,learned_coef)
         self.coef = true_coef
         self.intercept = true_intercept
