@@ -1,0 +1,6 @@
+N = 80 
+M = 100 
+h2 = 0.500000 
+LD block sizes are[ 5 0 ,   2 0 ,   3 0 ]
+LD off diagonal values are[ 0 . 9 ,   0 . 7 ,   0 . 4 ]
+tau is 0.005000 
