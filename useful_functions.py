@@ -80,7 +80,7 @@ def compute_weighted_chunck(data, ind):
 # Reading X and weights
     X = read_h5(data.X)
     weights_tb = pd.read_csv(data.weights, delim_whitespace=True)
-    weights = np.array(weights_tb['WEIGHT'])
+    weights = np.array(weights_tb.iloc[:,-1])
 
 # Chuncking X by row (Acitve indcies) then stripping by col (ind)
     active_X = get_active(X, data.active_ind)
@@ -91,9 +91,7 @@ def compute_weighted_chunck(data, ind):
 
 # Chuncking weights by row (Acitve indcies) then stripping by col (ind)
     active_weights = get_active(weights, data.active_ind)
-    active_weights_inv_sqr = 1/np.sqrt(active_weights)
-
-    weighted_chunck = np.transpose(np.multiply(np.transpose(active_X_strip),active_weights_inv_sqr)) #double transposing to allow broadcasting
+    weighted_chunck = np.transpose(np.multiply(np.transpose(active_X_strip),active_weights)) #double transposing to allow broadcasting
     return weighted_chunck
 
 
@@ -109,9 +107,7 @@ def compute_wy(data):
     weights_tb = pd.read_csv(data.weights, delim_whitespace=True)
     weights = np.array(weights_tb['WEIGHT'])
     weights = get_active(weights, data.active_ind)
-# weighting yi*(1/sqrt(wi))
-    weights_inv_sqr = 1 / np.sqrt(weights)
-    weighted_y = np.multiply(active_chisq,weights_inv_sqr)
+    weighted_y = np.multiply(active_chisq,weights)
 
     return weighted_y
 
@@ -132,3 +128,42 @@ def convert_to_original_ind(active_ind,new_ind):
     expanded_active_ind = expand_ind(active_ind)
     new_active_ind = [expanded_active_ind[i] for i in new_ind]
     return new_active_ind
+
+def get_scaled_weighted_Xy(data):
+    # this is for processing small data
+    X = read_h5(data.X)[:]
+    all_w = pd.read_csv(data.weights,delim_whitespace=True).iloc[:,-1]
+    active_w = get_active(all_w,data.active_ind)
+    scaled_w = stdize_array(active_w)
+    wy = compute_wy(data)
+    X_col_num = get_X_col_num(X)
+    wX = compute_weighted_chunck(data,[[0,X_col_num]])
+    if wX.ndim==1:
+        wX = wX[np.newaxis].T
+    swX = (wX - data.weighted_meanX)/data.weighted_stdX
+    swy = (wy - data.weighted_meany)/data.weighted_stdy
+    swX_with_intercept = attach_column(swX,scaled_w)
+    wX_with_intercept = attach_column(wX,active_w)
+    return swX_with_intercept,swy,wX_with_intercept,wy
+
+def attach_column(a,b):
+    """ Given ndarray a (2 dimensional) and b a one-dim array,
+    attach b to the end of a as a column
+    """
+    if a.ndim == 1:
+        a_with_b = np.concatenate((a[np.newaxis].T,b[np.newaxis].T),axis=1)
+    else:
+        a_with_b = np.concatenate((a,b[np.newaxis].T),axis=1)
+    return a_with_b
+
+def get_X_col_num(X):
+    if X.ndim == 1:
+        col_num = 1
+    else:
+        col_num = X.shape[1]
+    return col_num
+
+def get_mean_std_w(data):
+    weights = pd.read_csv(data.weights,delim_whitespace=True).iloc[:,-1]
+    active_weights = get_active(np.array(weights),data.active_ind)
+    return np.mean(active_weights),np.std(active_weights)

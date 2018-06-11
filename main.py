@@ -24,7 +24,7 @@ def highdim_sldsc(args):
     # TODO add shuffling data step
     train_ind,test_ind = d.get_traintest_ind(args)
     # train_ind and test_ind are lists of lists of two elements containing end points TODO change code related to active_ind
-    weights_fname = d.weights_processing(args,original_data) # compute final weights and store in file
+    weights_fname = d.weights_processing(args,original_data) # compute final weights and store in file. Final weights are the inverse of square roots of the estimated variances of the noise
     # form train and test data objects
     train_data = d.data(args.ld,args.sumstats,weights_fname,train_ind)
     test_data = d.data(args.ld,args.sumstats,weights_fname,test_ind)

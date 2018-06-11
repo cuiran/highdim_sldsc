@@ -12,6 +12,10 @@ def perform_regression(reg_method,data,**kwargs):
         regr.ElasticNet()
     elif reg_method == 'LassoOLS':
         regr.LassoOLS()
+    elif reg_method == 'skLassoCV':
+        print('Performing sklearn LassoCV fit...')
+        reg_obj = regr.sk_LassoCV(**kwargs)
+        reg_obj.direct_fit(data) 
     else:
         raise ValueError('The value of --reg-method is invalid')
     return reg_obj
