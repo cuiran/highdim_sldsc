@@ -11,10 +11,10 @@ import reg_main as r
 import regression as regr
 import useful_functions as u
 import pdb
-import optimizers as op
+import shrink
 
 class regression:
-    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=20):
+    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=200):
         self.fit_intercept = fit_intercept
         self.normalize = True # always normalize
         self.lr = lr
@@ -28,24 +28,23 @@ class regression:
         # formula for chisq is N*annot_ld*self.coef + self.intercept
         # compute the weighted sum of squared loss on data
         d = u.read_h5(data.X)
-        val_annotld = concat_data(d,data.active_ind) # output one ndarray represent regressor matrix
-        val_chisq = concat_chisq(data.y,data.active_ind) # ndarray of validation chisq stats
-        val_weights = concat_weights(data.weights,data.active_ind) # ndarray of validation weights
+        val_annotld = u.get_active(d,data.active_ind) # output one ndarray represent validation matrix
+        val_chisq = u.read_chisq_from_ss(data.y,data.active_ind) # ndarray of validation chisq stats
+        val_weights = u.get_active_weights(data.weights,data.active_ind) # ndarray of validation weights
         if val_annotld.ndim == 1:
             val_annotld = val_annotld[np.newaxis].T
             pred_chisq = np.multiply(data.N,val_annotld.dot(self.coef))+self.intercept
         else:
             pred_chisq = np.multiply(data.N,val_annotld.dot(self.coef))+self.intercept
-        ready_weights = np.divide(1,val_weights)
-        weighted_sumsqerror = ready_weights.dot((pred_chisq-val_chisq)**2)
+        weighted_sumsqerror = val_weights.dot((pred_chisq-val_chisq)**2)
         self.cv_loss = weighted_sumsqerror
         return weighted_sumsqerror
         
          
 
 class Lasso(regression):
-    def __init__(self,alpha='CV',CV_folds=3,CV_epochs=10,**kwarg):
-        super().__init__(**kwarg)
+    def __init__(self,alpha='CV',CV_folds=3,CV_epochs=100,**kwargs):
+        super().__init__(**kwargs)
         self.alpha=alpha
         self.CV_folds=CV_folds
         self.CV_epochs = CV_epochs
@@ -66,116 +65,136 @@ class Lasso(regression):
             self.alpha = self.choose_param(data)
             print('choosen alpha',self.alpha)
         model = Sequential()
-        model.add(Dense(1,input_dim=data.num_features+1,kernel_regularizer = regularizers.l1(self.alpha)))
-        # TODO adding intercept as a feature regularizes the intercept, which is NOT what we want. Fix this.
-        sgd = op.SGDL1(lr=self.lr,decay=self.decay,momentum=self.momentum)
-        pdb.set_trace()
+        model.add(Dense(1,input_dim=data.num_features+1,use_bias=False))
+        sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(data,self.minibatch_size),
-                            steps_per_epoch=data.active_len//self.minibatch_size,epochs=self.epochs,verbose=1)
-        learned_coef,_ = model.get_weights() # the learned intercept is the last element in the learned_coef array
+                            steps_per_epoch=data.active_len//self.minibatch_size,
+                            epochs=self.epochs,verbose=1,
+                            callbacks = [shrink.L1_update(model.trainable_weights[:1],
+                                lr=self.lr,regularizer=self.alpha)])
+        learned_coef= model.get_weights()[0]
+        # the learned intercept is the last element in the learned_coef array
         true_coef,true_intercept = recover_coef_intercept(data,learned_coef)
+        self.coef = true_coef
+        self.intercept = true_intercept
+        return self.coef,self.intercept,self.alpha
+
+class sk_LassoCV(regression):
+    def __init__(self,**kwargs):
+        super().__init__(**kwargs)
+
+    def fit(self,data):
+        X,y = u.preprocess_data(data)
+        wX,wy = u.weight_Xy(data,X,y)
+        from sklearn.linear_model import LassoCV
+        model = LassoCV(fit_intercept=False)
+        model.fit(wX,wy)
+        learned_coef = model.coef_
+        true_coef = (learned_coef/data.X_scale)/data.N
+        true_intercept = data.weighted_meany - data.weighted_meanX.dot(learned_coef/data.X_scale)
+        self.coef = true_coef
+        self.intercept = true_intercept
+        self.alpha = model.alpha_
+        return self.coef,self.intercept,self.alpha
+        
+    def direct_fit(self,data):
+        # direct fit without manually weight and scale the data
+        X = u.read_h5(data.X)
+        if X.ndim == 1:
+            X = X[:].reshape(-1,1)
+        active_X = u.get_active(X,data.active_ind)
+        active_y = u.read_chisq_from_ss(data.y,data.active_ind)
+        w = u.get_active_weights(data.weights,data.active_ind)
+        from sklearn.linear_model import LassoCV
+        model = LassoCV()
+        model.fit(active_X,active_y,sample_weight = w)
+        self.coef = model.coef_/data.N
+        self.intercept = model.intercept_
+        self.alpha = model.alpha_
+        return self.coef,self.intercept,self.alpha
+
+class sk_OLS(regression):
+    def __init__(self,**kwargs):
+        super().__init__(**kwargs)
+
+    def fit(self,data):
+        X,y = u.preprocess_data(data)
+        wX,wy = u.weight_Xy(data,X,y) 
+        from sklearn.linear_model import LinearRegression
+        model = LinearRegression(fit_intercept=False)
+        model.fit(wX,wy)
+        learned_coef = model.coef_
+        true_coef = (learned_coef/data.X_scale)/data.N
+        true_intercept = data.weighted_meany - data.weighted_meanX.dot(learned_coef/data.X_scale)
         self.coef = true_coef
         self.intercept = true_intercept
         return self.coef,self.intercept
 
-def concat_data(d,active_ind):
-    """ 
-    d is a h5py file object, d can be sliced
-    active_ind is a list that contains the endpoints of indices
-    output ndarray that's the result of concatenate all active indices of d
-    """
-    start,end = active_ind[0]
-    if d.ndim == 1:
-        X = d[start:end]
-    else:
-        X = d[start:end,:]
-    if len(active_ind)==1:
-        return X
-    else:
-        for i in active_ind[1:]:
-            start,end = i
-            X = np.concatenate((X,d[start:end,:]),axis=0)
-        return X
-    
+    def direct_fit(self,data):
+        # direct fit skips the standardizing step
+        X = u.read_h5(data.X)
+        if X.ndim == 1:
+            X = X[:].reshape(-1,1)
+        active_X = u.get_active(X,data.active_ind)
+        active_y = u.read_chisq_from_ss(data.y,data.active_ind)
+        w = u.get_active_weights(data.weights,data.active_ind)
+        from sklearn.linear_model import LinearRegression
+        model = LinearRegression()
+        model.fit(active_X,active_y,sample_weight = w)
+        self.coef = model.coef_/data.N
+        self.intercept = model.intercept_
+        return self.coef, self.intercept
 
-def concat_weights(weights_file,active_ind):
-    w_df = pd.read_csv(weights_file,delim_whitespace=True)
-    start,end = active_ind[0]
-    w = w_df.iloc[start:end,0]
-    if len(active_ind) == 1:
-        return w
-    else:
-        for i in active_ind[1:]:
-            start,end = i
-            w = np.concatenate((w,w_df.iloc[start:end,0]),axis=0)
-        return w
-
-def concat_chisq(ss_file, active_ind):
-    ss_df = pd.read_csv(ss_file,delim_whitespace=True)
-    start,end = active_ind[0]
-    chisq = np.array(ss_df.loc[:,'CHISQ'])
-    chisq = chisq[start:end]
-    if len(active_ind) == 1:
-        return chisq
-    else:
-        for i in active_ind[1:]:
-            start,end = i
-            chisq = np.concatenate((chisq,ss_df.loc[start:end,'CHISQ']),axis=0)
-        return chisq
+   
 
 def recover_coef_intercept(data,learned_coef):
     """ Recover true coef and intercept from the learned coef
     Learned coef is the coefficients for weighted scaled data
     The last element of learned coef is the intercept term
     """
-    std_tomulti_w = get_std_tomulti_w(data) # standard deviation of ready-to-multiply weights
-    weighted_stdX_with_intercept = np.append(data.weighted_stdX,std_tomulti_w)
-    Ntrue_coef = np.multiply(data.weighted_stdy,np.divide(learned_coef.flatten(),weighted_stdX_with_intercept))
-    true_coef = np.divide(Ntrue_coef,data.N)
-    return true_coef[:-1],true_coef[-1] 
-
-def get_std_tomulti_w(data):
-    weights = pd.read_csv(data.weights,delim_whitespace=True).iloc[:,-1]
-    active_weights = u.get_active(np.array(weights),data.active_ind)
-    tomulti_w = np.divide(1,np.sqrt(active_weights))
-    return np.std(tomulti_w) 
+    mean_active_w,std_active_w = u.get_mean_std_w(data)
+    weighted_stdX_with_intercept = np.append(data.weighted_stdX,std_active_w)
+    coefs = learned_coef.flatten()
+    Ntrue_coef = data.weighted_stdy*(coefs/weighted_stdX_with_intercept)
+    true_coef = np.divide(Ntrue_coef[:-1],data.N)
+    true_intercept = Ntrue_coef[-1]
+    return true_coef,true_intercept
 
 def generator(data,n):
     """
     Generates mini-batches of data
     n = mini batch size
     """
-    active_ind = u.expand_ind(data.active_ind) # TODO change data.active_ind in this function into active_ind
+    active_ind = u.expand_ind(data.active_ind) 
     num_active_samples = data.active_len
     annotld = u.read_h5(data.X)
     chisq = np.array(pd.read_csv(data.y,delim_whitespace=True)['CHISQ'])
-    w = np.array(pd.read_csv(data.weights,delim_whitespace=True).iloc[:,0])
-    #active_w = u.get_active(w,data.active_ind)
-    to_multiply_w = np.sqrt(np.divide(1,w)) # the weights that are ready to be multiplied into y and X
-    stdized_tomulti_w = u.stdize_array(to_multiply_w)
+    all_w = np.array(pd.read_csv(data.weights,delim_whitespace=True).iloc[:,-1])
+    mean_active_w,std_active_w = u.get_mean_std_w(data)
+    stdized_w = (all_w - mean_active_w)/std_active_w # ideally we should standardize according to active_w without disrupting the indices
     num_batches = num_active_samples//n
     while True:
         i=1
         while i<=num_batches:
             batch_ind = active_ind[n*(i-1):n*i]
-            batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,to_multiply_w,stdized_tomulti_w,batch_ind)
+            batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,all_w,stdized_w,batch_ind)
             i+=1
             yield batch_ws_annotld,batch_ws_chisq
         # the last batch concatenates what remains and the head of data
         batch_ind = active_ind[n*(i-1):]+active_ind[:n-len(active_ind)+n*(i-1)]
         batch_ind.sort()
-        batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,to_multiply_w,stdized_tomulti_w,batch_ind)
+        batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,all_w,stdized_w,batch_ind)
         yield batch_ws_annotld,batch_ws_chisq
 
-def get_batch(data,annotld,chisq,to_multiply_w,stdized_tomulti_w,batch_ind):
+def get_batch(data,annotld,chisq,all_w,stdized_w,batch_ind):
     """
     inputs:
     data object
     annotld = h5 dataset for annotation ld
     chisq = entire (not only active) chisq statistics as ndarray
-    to_multiply_w = ndarray of weights that are ready to be multiplied into y and X
-    scaled_to_multi_w = scaled full ready_to_multiply weights as ndarray
+    all_w = ndarray of weights that are ready to be multiplied into y and X
+    stdized_w = scaled full ready_to_multiply weights as ndarray
     batch_ind = the indices for this batch
     outputs:
     weighted scaled batch annotation ld as ndarray
@@ -186,28 +205,20 @@ def get_batch(data,annotld,chisq,to_multiply_w,stdized_tomulti_w,batch_ind):
         batch_annotld = annotld[batch_ind]
     else:
         batch_annotld = annotld[batch_ind,:]
-    weights_to_multiply = to_multiply_w[batch_ind]
-    batch_stdized_tomulti_w = stdized_tomulti_w[batch_ind]
+    batch_w = all_w[batch_ind]
+    batch_stdized_w = stdized_w[batch_ind]
     if batch_annotld.ndim == 1:
-        w_annotld = weights_to_multiply*batch_annotld
+        w_annotld = batch_w*batch_annotld
     else:
-        w_annotld = np.multiply(weights_to_multiply[np.newaxis].T,batch_annotld) # w*X
-    w_chisq = np.multiply(weights_to_multiply,batch_chisq) # w*y
-    ws_annotld = np.divide(np.subtract(w_annotld,data.weighted_meanX),data.weighted_stdX) # (w*X - mean(w*X))/std(w*X)
-    ws_annotld_with_intercept = attach_column(ws_annotld,batch_stdized_tomulti_w) # add column of stdized_tomulti_w to regressors
-    ws_chisq = np.divide(w_chisq-data.weighted_meany,data.weighted_stdy) #(w*y - mean(w*y))/std(w*y)
+        w_annotld = np.multiply(batch_w[np.newaxis].T,batch_annotld) # w*X
+    w_chisq = np.multiply(batch_w,batch_chisq) # w*y
+    pdb.set_trace()
+    ws_annotld = (w_annotld - data.weighted_meanX)/data.weighted_stdX
+    ws_annotld_with_intercept = u.attach_column(ws_annotld,batch_stdized_w) # add column of stdized_tomulti_w to regressors
+    ws_chisq = (w_chisq - data.weighted_meany)/data.weighted_stdy
     return ws_annotld_with_intercept,ws_chisq
 
-def attach_column(a,b):
-    """ Given ndarray a (2 dimensional) and b a one-dim array,
-    attach b to the end of a as a column
-    """
-    if a.ndim == 1:
-        a_with_b = np.concatenate((a[np.newaxis].T,b[np.newaxis].T),axis=1)
-    else:
-        a_with_b = np.concatenate((a,b[np.newaxis].T),axis=1)
-    return a_with_b
-    
+   
 
 def compute_cvlosses(candidate_params,data,kf,reg_method):
     """

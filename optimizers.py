@@ -1,15 +1,16 @@
 from keras import optimizers as ko
 from keras.legacy import interfaces
+import keras.backend as K
 import numpy as np
 import pdb
 
 class SGDL1(ko.SGD):
-    def __init__(self,**kwargs):
+    def __init__(self,regularizer=0.0,**kwargs):
         super().__init__(**kwargs)
+        self.regularizer = regularizer
 
     @interfaces.legacy_get_updates_support
     def get_updates(self, loss, params):
-        pdb.set_trace()
         grads = self.get_gradients(loss, params)
         self.updates = [K.update_add(self.iterations, 1)]
 
@@ -23,12 +24,20 @@ class SGDL1(ko.SGD):
         self.weights = [self.iterations] + moments
         for p, g, m in zip(params, grads, moments):
             v = self.momentum * m - lr * g  # velocity
-            self.updates.append(K.update(m, v))
+            self.updates.append(K.update(m, v)) #TODO do I need to change this?
 
             if self.nesterov:
                 new_p = p + self.momentum * v - lr * g
             else:
                 new_p = p + v
+
+            #TODO new_p is a tensor and cannot be an argument of the function np.sign
+            if np.sign(new_p) == (-1)*np.sign(p):
+                L1_p = 0.0
+            else:
+                L1_p = new_p - self.regularizer * sign(new_p)
+
+            new_p = L1_p
 
             # Apply constraints.
             if getattr(p, 'constraint', None) is not None:

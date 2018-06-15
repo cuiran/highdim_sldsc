@@ -56,8 +56,8 @@ def chisq_sum_all(ss_file, active_ind):
 
 #NAME CHANGE:  make_chuncks --> make_strips
 def make_strips(data, stripsize=1):
-    # stripping data.X by column (After chuncking by row), default strip size is 100
-    # output an ordered list of list of ordered indices
+    # stripping data.X by column (After chuncking by row), default strip size is 1
+    # output an list of lists of endpoints
     X = read_h5(data.X)
     if X.ndim == 1:
         ncols = 1
@@ -70,7 +70,14 @@ def make_strips(data, stripsize=1):
         inx_list = [inx1[i:i + 2] for i in range(len(inx1) - 1)]
     return inx_list
 
-
+def get_strip_active_X(X,strip,active_ind):
+    # assume X is large h5 object, get a strip of X with active rows
+    if X.ndim == 1:
+        X_strip = X
+    else:
+        X_strip = X[:,strip[0]:strip[1]]
+    active_X_strip = get_active(X_strip,active_ind)
+    return active_X_strip
 
 def compute_weighted_chunck(data, ind):
 # for the strip of X given by ind (after chuncking by active indcies), compute weights times chunck
@@ -80,20 +87,17 @@ def compute_weighted_chunck(data, ind):
 # Reading X and weights
     X = read_h5(data.X)
     weights_tb = pd.read_csv(data.weights, delim_whitespace=True)
-    weights = np.array(weights_tb['WEIGHT'])
+    weights = np.array(weights_tb.iloc[:,-1])
 
 # Chuncking X by row (Acitve indcies) then stripping by col (ind)
-    active_X = get_active(X, data.active_ind)
     if active_X.ndim == 1:
-        active_X_strip = active_X
+        active_X_strip = get_active(X,data.active_ind)
     else:
-        active_X_strip = active_X[:,ind[0]:ind[1]]
+        active_X_strip = get_strip_active_X(X,ind,data.active_ind)
 
 # Chuncking weights by row (Acitve indcies) then stripping by col (ind)
     active_weights = get_active(weights, data.active_ind)
-    active_weights_inv_sqr = 1/np.sqrt(active_weights)
-
-    weighted_chunck = np.transpose(np.multiply(np.transpose(active_X_strip),active_weights_inv_sqr)) #double transposing to allow broadcasting
+    weighted_chunck = np.transpose(np.multiply(np.transpose(active_X_strip),active_weights)) #double transposing to allow broadcasting
     return weighted_chunck
 
 
@@ -109,10 +113,7 @@ def compute_wy(data):
     weights_tb = pd.read_csv(data.weights, delim_whitespace=True)
     weights = np.array(weights_tb['WEIGHT'])
     weights = get_active(weights, data.active_ind)
-# weighting yi*(1/sqrt(wi))
-    weights_inv_sqr = 1 / np.sqrt(weights)
-    weighted_y = np.multiply(active_chisq,weights_inv_sqr)
-
+    weighted_y = np.multiply(active_chisq,weights)
     return weighted_y
 
 def stdize_array(array):
@@ -132,3 +133,78 @@ def convert_to_original_ind(active_ind,new_ind):
     expanded_active_ind = expand_ind(active_ind)
     new_active_ind = [expanded_active_ind[i] for i in new_ind]
     return new_active_ind
+
+def get_scaled_weighted_Xy(data):
+    # this is for processing small data
+    X = read_h5(data.X)[:]
+    all_w = pd.read_csv(data.weights,delim_whitespace=True).iloc[:,-1]
+    active_w = get_active(all_w,data.active_ind)
+    scaled_w = stdize_array(active_w)
+    wy = compute_wy(data)
+    X_col_num = get_X_col_num(X)
+    wX = compute_weighted_chunck(data,[[0,X_col_num]])
+    if wX.ndim==1:
+        wX = wX[np.newaxis].T
+    swX = (wX - data.weighted_meanX)/data.weighted_stdX
+    swy = (wy - data.weighted_meany)/data.weighted_stdy
+    swX_with_intercept = attach_column(swX,scaled_w)
+    wX_with_intercept = attach_column(wX,active_w)
+    return swX_with_intercept,swy,wX_with_intercept,wy
+
+def attach_column(a,b):
+    """ Given ndarray a (2 dimensional) and b a one-dim array,
+    attach b to the end of a as a column
+    """
+    if a.ndim == 1:
+        a_with_b = np.concatenate((a[np.newaxis].T,b[np.newaxis].T),axis=1)
+    else:
+        a_with_b = np.concatenate((a,b[np.newaxis].T),axis=1)
+    return a_with_b
+
+def get_X_col_num(X):
+    if X.ndim == 1:
+        col_num = 1
+    else:
+        col_num = X.shape[1]
+    return col_num
+
+def get_mean_std_w(data):
+    weights = pd.read_csv(data.weights,delim_whitespace=True).iloc[:,-1]
+    active_weights = get_active(np.array(weights),data.active_ind)
+    return np.mean(active_weights),np.std(active_weights)
+
+def get_active_weights(weights_file,active_ind):
+    w_df = pd.read_csv(weights_file,delim_whitespace=True)
+    start,end = active_ind[0]
+    w = w_df.iloc[start:end,-1]
+    if len(active_ind) == 1:
+        return w
+    else:
+        for i in active_ind[1:]:
+            start,end = i
+            w = np.concatenate((w,w_df.iloc[start:end,-1]),axis=0)
+        return w
+
+def preprocess_data(data):
+    # this is for small data
+    # center X and y with weighted mean and scale X with the L2 norm of X - weighted_mean(X)
+    # no scaling for y
+    # return the centered scaled active X and centered active y
+    active_X = get_active(read_h5(data.X),data.active_ind)
+    X = active_X - data.weighted_meanX
+    X /= data.X_scale
+    active_y = read_chisq_from_ss(data.y,data.active_ind)
+    y = active_y - data.weighted_meany
+    if X.ndim == 1:
+        X = X.reshape(-1,1)
+    return X, y
+
+def weight_Xy(data,X,y):
+    # this is for small data
+    # multiply X and y by the square root of w
+    # data.weights stores the weights that's approx inverse of estimated CVF
+    w = u.get_active_weights(data.weights,data.active_ind)
+    w = np.sqrt(w)
+    new_X = w.values.reshape(-1,1)*X
+    new_y = w*y
+    return new_X,new_y

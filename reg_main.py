@@ -1,7 +1,8 @@
 import regression as regr
 import pdb
 
-def perform_regression(reg_method,data,**kwargs):
+def perform_regression(args,data,**kwargs):
+    reg_method =args.reg_method
     if reg_method == 'OLS':
         regr.OLS()
     elif reg_method == 'Lasso':
@@ -12,6 +13,19 @@ def perform_regression(reg_method,data,**kwargs):
         regr.ElasticNet()
     elif reg_method == 'LassoOLS':
         regr.LassoOLS()
+    elif reg_method == 'skLassoCV':
+        if args.fit == 'direct':
+            print('Performing sklearn LassoCV direct fit...')
+            #TODO finish writing this
+    elif reg_method == 'skOLS':
+        if args.fit == 'direct':
+            print('Performing sklearn OLS direct fit...')
+            reg_obj = regr.sk_OLS(**kwargs)
+            reg_obj.direct_fit(data)
+        elif args.fit == 'manual':
+            print('Performing sklearn OLS manual fit...')
+            reg_obj = regr.sk_OLS(**kwargs)
+            reg_obj.fit(data)
     else:
         raise ValueError('The value of --reg-method is invalid')
     return reg_obj
