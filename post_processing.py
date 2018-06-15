@@ -18,9 +18,10 @@ def process(args,reg,data):
     fi.write("WSSE \n")
     fi.write(str(sse))
     fi.close()
-    alpha_fname = args.output_folder+'alpha.txt'
-    f = open(alpha_fname,'w')
-    f.write("ALPHA \n")
-    f.write(str(reg.alpha))
-    f.close()
+    if hasattr(reg,'alpha'):
+        alpha_fname = args.output_folder+'alpha.txt'
+        f = open(alpha_fname,'w')
+        f.write("ALPHA \n")
+        f.write(str(reg.alpha))
+        f.close()
     return 

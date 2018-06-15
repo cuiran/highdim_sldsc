@@ -69,3 +69,72 @@ def process(args,train_data):
 #            active_array = np.concatenate(active_array,ndarray[start:end,:],axis=0)
 #        return active_array
 
+    @property
+    def weighted_stdX(self):
+        if not self._weighted_stdX:
+            d = u.read_h5(self.X)
+            if d.ndim == 1:
+                r,c = d.shape[0],1
+            else:
+                r,c = d.shape
+            sum_sqwdiff = 0
+            for i in self.active_ind:
+                start = i[0]
+                end = i[1]
+                chunck_data = data(self.X,self.y,self.weights,[[start,end]])
+                weighted_chunck = u.compute_weighted_chunck(chunck_data,[0,c])
+                sum_sqwdiff += np.sum((weighted_chunck - self.weighted_meanX)**2,axis=0)
+            self._weighted_stdX = np.sqrt(np.divide(sum_sqwdiff,self.sum_active_weights))
+        return self._weighted_stdX
+
+            if d.ndim == 1:
+                r,c = d.shape[0],1
+            else:
+                r,c = d.shape
+            sum_active_weighted_rows = 0
+            for i in self.active_ind:
+                start = i[0]
+                end = i[1]
+                chunck_data = data(self.X,self.y,self.weights,[[start,end]])
+                weighted_chunck = u.compute_weighted_chunck(chunck_data,[0,c])
+                sum_active_weighted_rows += np.sum(weighted_chunck,axis=0)
+
+    @property
+    def weighted_meanX(self):
+        # weighted average of columns of X (\sum w_ix_i)/(\sum w_i)
+        if not self._weighted_meanX:
+            d = u.read_h5(self.X)
+            if d.ndim == 1:
+                r,c = d.shape[0],1
+            else:
+                r,c = d.shape
+            sum_active_weighted_rows = 0
+            for i in self.active_ind:
+                start = i[0]
+                end = i[1]
+                chunck_data = data(self.X,self.y,self.weights,[[start,end]])
+                weighted_chunck = u.compute_weighted_chunck(chunck_data,[0,c])
+                sum_active_weighted_rows += np.sum(weighted_chunck,axis=0)
+            self._weighted_meanX = np.divide(sum_active_weighted_rows,self.sum_active_weights)
+        return self._weighted_meanX
+
+
+def concat_data(d,active_ind):
+    """ 
+    d is a h5py file object, d can be sliced
+    active_ind is a list that contains the endpoints of indices
+    output ndarray that's the result of concatenate all active indices of d
+    """
+    start,end = active_ind[0]
+    if d.ndim == 1:
+        X = d[start:end]
+    else:
+        X = d[start:end,:]
+    if len(active_ind)==1:
+        return X
+    else:
+        for i in active_ind[1:]:
+            start,end = i
+            X = np.concatenate((X,d[start:end,:]),axis=0)
+        return X
+

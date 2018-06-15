@@ -28,15 +28,15 @@ class regression:
         # formula for chisq is N*annot_ld*self.coef + self.intercept
         # compute the weighted sum of squared loss on data
         d = u.read_h5(data.X)
-        val_annotld = concat_data(d,data.active_ind) # output one ndarray represent validation matrix
-        val_chisq = concat_chisq(data.y,data.active_ind) # ndarray of validation chisq stats
-        val_weights = concat_weights(data.weights,data.active_ind) # ndarray of validation weights
+        val_annotld = u.get_active(d,data.active_ind) # output one ndarray represent validation matrix
+        val_chisq = u.read_chisq_from_ss(data.y,data.active_ind) # ndarray of validation chisq stats
+        val_weights = u.get_active_weights(data.weights,data.active_ind) # ndarray of validation weights
         if val_annotld.ndim == 1:
             val_annotld = val_annotld[np.newaxis].T
             pred_chisq = np.multiply(data.N,val_annotld.dot(self.coef))+self.intercept
         else:
             pred_chisq = np.multiply(data.N,val_annotld.dot(self.coef))+self.intercept
-        weighted_sumsqerror = (val_weights**2).dot((pred_chisq-val_chisq)**2)
+        weighted_sumsqerror = val_weights.dot((pred_chisq-val_chisq)**2)
         self.cv_loss = weighted_sumsqerror
         return weighted_sumsqerror
         
@@ -71,7 +71,8 @@ class Lasso(regression):
         model.fit_generator(generator(data,self.minibatch_size),
                             steps_per_epoch=data.active_len//self.minibatch_size,
                             epochs=self.epochs,verbose=1,
-                            callbacks = [shrink.L1_update(model.trainable_weights[:1],lr=self.lr,regularizer=self.alpha)])
+                            callbacks = [shrink.L1_update(model.trainable_weights[:1],
+                                lr=self.lr,regularizer=self.alpha)])
         learned_coef= model.get_weights()[0]
         # the learned intercept is the last element in the learned_coef array
         true_coef,true_intercept = recover_coef_intercept(data,learned_coef)
@@ -84,74 +85,68 @@ class sk_LassoCV(regression):
         super().__init__(**kwargs)
 
     def fit(self,data):
-        swX_with_intercept,swy,_,_ = u.get_scaled_weighted_Xy(data)
+        X,y = u.preprocess_data(data)
+        wX,wy = u.weight_Xy(data,X,y)
         from sklearn.linear_model import LassoCV
         model = LassoCV(fit_intercept=False)
-        model.fit(swX_with_intercept,swy)
+        model.fit(wX,wy)
         learned_coef = model.coef_
-        true_coef,true_intercept = recover_coef_intercept(data,learned_coef)
+        true_coef = (learned_coef/data.X_scale)/data.N
+        true_intercept = data.weighted_meany - data.weighted_meanX.dot(learned_coef/data.X_scale)
         self.coef = true_coef
         self.intercept = true_intercept
         self.alpha = model.alpha_
         return self.coef,self.intercept,self.alpha
         
     def direct_fit(self,data):
-        _,_,wX_with_intercept,wy = u.get_scaled_weighted_Xy(data)
+        # direct fit without manually weight and scale the data
+        X = u.read_h5(data.X)
+        if X.ndim == 1:
+            X = X[:].reshape(-1,1)
+        active_X = u.get_active(X,data.active_ind)
+        active_y = u.read_chisq_from_ss(data.y,data.active_ind)
+        w = u.get_active_weights(data.weights,data.active_ind)
         from sklearn.linear_model import LassoCV
-        model = LassoCV(fit_intercept=False)
-        model.fit(wX_with_intercept,wy)
-        learned_coef = model.coef_
-        true_coef = learned_coef[:-1]/data.N
-        true_intercept = learned_coef[-1]
-        self.coef = true_coef
-        self.intercept = true_intercept
+        model = LassoCV()
+        model.fit(active_X,active_y,sample_weight = w)
+        self.coef = model.coef_/data.N
+        self.intercept = model.intercept_
         self.alpha = model.alpha_
         return self.coef,self.intercept,self.alpha
 
-def concat_data(d,active_ind):
-    """ 
-    d is a h5py file object, d can be sliced
-    active_ind is a list that contains the endpoints of indices
-    output ndarray that's the result of concatenate all active indices of d
-    """
-    start,end = active_ind[0]
-    if d.ndim == 1:
-        X = d[start:end]
-    else:
-        X = d[start:end,:]
-    if len(active_ind)==1:
-        return X
-    else:
-        for i in active_ind[1:]:
-            start,end = i
-            X = np.concatenate((X,d[start:end,:]),axis=0)
-        return X
-    
+class sk_OLS(regression):
+    def __init__(self,**kwargs):
+        super().__init__(**kwargs)
 
-def concat_weights(weights_file,active_ind):
-    w_df = pd.read_csv(weights_file,delim_whitespace=True)
-    start,end = active_ind[0]
-    w = w_df.iloc[start:end,-1]
-    if len(active_ind) == 1:
-        return w
-    else:
-        for i in active_ind[1:]:
-            start,end = i
-            w = np.concatenate((w,w_df.iloc[start:end,-1]),axis=0)
-        return w
+    def fit(self,data):
+        X,y = u.preprocess_data(data)
+        wX,wy = u.weight_Xy(data,X,y) 
+        from sklearn.linear_model import LinearRegression
+        model = LinearRegression(fit_intercept=False)
+        model.fit(wX,wy)
+        learned_coef = model.coef_
+        true_coef = (learned_coef/data.X_scale)/data.N
+        true_intercept = data.weighted_meany - data.weighted_meanX.dot(learned_coef/data.X_scale)
+        self.coef = true_coef
+        self.intercept = true_intercept
+        return self.coef,self.intercept
 
-def concat_chisq(ss_file, active_ind):
-    ss_df = pd.read_csv(ss_file,delim_whitespace=True)
-    start,end = active_ind[0]
-    chisq = np.array(ss_df.loc[:,'CHISQ'])
-    chisq = chisq[start:end]
-    if len(active_ind) == 1:
-        return chisq
-    else:
-        for i in active_ind[1:]:
-            start,end = i
-            chisq = np.concatenate((chisq,ss_df.loc[start:end,'CHISQ']),axis=0)
-        return chisq
+    def direct_fit(self,data):
+        # direct fit skips the standardizing step
+        X = u.read_h5(data.X)
+        if X.ndim == 1:
+            X = X[:].reshape(-1,1)
+        active_X = u.get_active(X,data.active_ind)
+        active_y = u.read_chisq_from_ss(data.y,data.active_ind)
+        w = u.get_active_weights(data.weights,data.active_ind)
+        from sklearn.linear_model import LinearRegression
+        model = LinearRegression()
+        model.fit(active_X,active_y,sample_weight = w)
+        self.coef = model.coef_/data.N
+        self.intercept = model.intercept_
+        return self.coef, self.intercept
+
+   
 
 def recover_coef_intercept(data,learned_coef):
     """ Recover true coef and intercept from the learned coef

@@ -40,6 +40,13 @@ class data:
         self._weighted_stdy = None 
         self._N = None
         self._num_features = None
+        self._sum_active_weights = None
+        self._X_strips = None
+        self._Xstripsize = None
+
+    @property
+    def Xstripsize(self):
+        return min(self.num_features,100.0)
 
     @property
     def num_features(self):
@@ -83,66 +90,55 @@ class data:
                 sum_sqdiff += sum_sqdiff_chunck
             self._std_X = np.sqrt(np.divide(sum_sqdiff,self.active_len))
         return self._std_X
+ 
+    @property
+    def sum_active_weights(self):
+        active_weights = u.get_active_weights(self.weights,self.active_ind)
+        self._sum_active_weights = np.sum(active_weights)
+        return self._sum_active_weights
     
     @property
-    def weighted_meanX(self):
-        if not self._weighted_meanX:
-            d = u.read_h5(self.X)
-            if d.ndim == 1:
-                r,c = d.shape[0],1
-            else:
-                r,c = d.shape
-            sum_active_weighted_rows = 0
-            for i in self.active_ind:
-                start = i[0]
-                end = i[1]
-                chunck_data = data(self.X,self.y,self.weights,[[start,end]])
-                weighted_chunck = u.compute_weighted_chunck(chunck_data,[0,c])
-                sum_active_weighted_rows += np.sum(weighted_chunck,axis=0)
-            self._weighted_meanX = np.divide(sum_active_weighted_rows,self.active_len)
-        return self._weighted_meanX
+    def X_strips(self):
+        # stripping X by column, return a list of lists of endpoints
+        self._X_strips = u.make_strips(self,stripsize=self.Xstripsize)
+        return self._X_strips
 
     @property
-    def weighted_stdX(self):
-        if not self._weighted_stdX:
-            d = u.read_h5(self.X)
-            if d.ndim == 1:
-                r,c = d.shape[0],1
-            else:
-                r,c = d.shape
-            sum_sqwdiff = 0
-            for i in self.active_ind:
-                start = i[0]
-                end = i[1]
-                chunck_data = data(self.X,self.y,self.weights,[[start,end]])
-                weighted_chunck = u.compute_weighted_chunck(chunck_data,[0,c])
-                sum_sqwdiff += np.sum((weighted_chunck - self.weighted_meanX)**2,axis=0)
-            self._weighted_stdX = np.sqrt(np.divide(sum_sqwdiff,self.active_len))
-        return self._weighted_stdX
+    def weighted_meanX(self):
+        # weighted average of columns of  active X: (\sum w_ix_i)/(\sum w_i)
+        w_mean = []
+        w = u.get_active_weights(self.weights,self.active_ind)
+        for strip in self.X_strips:
+            X = u.read_h5(self.X)
+            X_strip = u.get_strip_active_X(X,strip,self.active_ind)
+            w_mean_strip = np.average(X_strip,weights=w,axis=0)
+            w_mean.append(w_mean_strip)
+        w_mean = np.array(w_mean)
+        self._weighted_meanX = w_mean.flatten()
+        return self._weighted_meanX
+        
+    @property
+    def X_scale(self):
+        # L2 norm of X - weighted_meanX
+        centered_norm = []
+        for strip in self.X_strips:
+            X = u.read_h5(self.X)
+            X_active_strip = u.get_strip_active_X(X,strip,self.active_ind)
+            X_offset_strip = self.weighted_meanX[strip[0]:strip[1]]
+            X_centered_strip = X_active_strip - X_offset_strip
+            norm_strip = np.linalg.norm(X_centered_strip,axis=0,ord=2)
+            centered_norm.append(norm_strip)
+        centered_norm = np.array(centered_norm)
+        self._X_scale = centered_norm.flatten()
+        return self._X_scale
 
     @property
     def weighted_meany(self):
-        if not self._weighted_meany:
-            full_weights = np.array(pd.read_csv(self.weights,delim_whitespace=True).iloc[:,-1])
-            full_y = np.array(pd.read_csv(self.y,delim_whitespace=True)['CHISQ'])
-            active_weights = u.get_active(full_weights,self.active_ind)
-            active_y = u.get_active(full_y,self.active_ind)
-            wy = active_weights*active_y
-            self._weighted_meany = np.mean(wy)
-            self._weighted_stdy = np.std(wy)
+        if not self._weighted_meany: 
+            active_w = u.get_active_weights(self.weights,self.active_ind)
+            active_y = u.read_chisq_from_ss(self.y,self.active_ind)
+            self._weighted_meany = np.average(active_y,weights=active_w)
         return self._weighted_meany
-
-    @property
-    def weighted_stdy(self):
-        if not self._weighted_stdy:
-            full_weights = np.array(pd.read_csv(self.weights,delim_whitespace=True).iloc[:,-1])
-            full_y = np.array(pd.read_csv(self.y,delim_whitespace=True)['CHISQ'])
-            active_weights = u.get_active(full_weights,self.active_ind)
-            active_y = u.get_active(full_y,self.active_ind)
-            wy = active_weights*active_y
-            self._weighted_meany = np.mean(wy)
-            self._weighted_stdy = np.std(wy)
-        return self._weighted_stdy
 
     @property
     def N(self):
@@ -234,8 +230,8 @@ def compute_final_w(args,data):
 
 def weights_processing(args,original_data):
     final_weights = compute_final_w(args,original_data)
-    weights_inv_sqrt = 1/np.sqrt(final_weights)
-    df = pd.DataFrame(data=weights_inv_sqrt,columns=['WEIGHT'])
+    weights_inv = 1/final_weights
+    df = pd.DataFrame(data=weights_inv,columns=['WEIGHT'])
     weights_fname = args.output_folder+'final_weights.txt'
     df.to_csv(weights_fname,sep='\t',index=False)
     return weights_fname
