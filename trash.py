@@ -138,3 +138,45 @@ def concat_data(d,active_ind):
             X = np.concatenate((X,d[start:end,:]),axis=0)
         return X
 
+    if batch_annotld.ndim == 1:
+        w_annotld = batch_w*batch_annotld
+    else:
+        w_annotld = np.multiply(batch_w[np.newaxis].T,batch_annotld) # w*X
+    w_chisq = np.multiply(batch_w,batch_chisq) # w*y
+    pdb.set_trace()
+    ws_annotld = (w_annotld - data.weighted_meanX)/data.weighted_stdX
+    ws_annotld_with_intercept = u.attach_column(ws_annotld,batch_stdized_w) # add column of stdized_tomulti_w to regressors
+    ws_chisq = (w_chisq - data.weighted_meany)/data.weighted_stdy
+    return ws_annotld_with_intercept,ws_chisq
+
+def recover_coef_intercept(data,learned_coef):
+    """ Recover true coef and intercept from the learned coef
+    Learned coef is the coefficients for weighted scaled data
+    The last element of learned coef is the intercept term
+    """
+    mean_active_w,std_active_w = u.get_mean_std_w(data)
+    weighted_stdX_with_intercept = np.append(data.weighted_stdX,std_active_w)
+    coefs = learned_coef.flatten()
+    Ntrue_coef = data.weighted_stdy*(coefs/weighted_stdX_with_intercept)
+    true_coef = np.divide(Ntrue_coef[:-1],data.N)
+    true_intercept = Ntrue_coef[-1]
+    return true_coef,true_intercept
+
+
+def get_candidate_params_for_scaled_weighted_data(data):
+    #TODO the weighting scheme has changed, so this function needs to change
+    # assuming the input data is unscaled, but has attributes mean and std
+    scaled_weighted_ydotX = compute_scaled_weighted_ydotX(data) #ndarray
+    N = data.active_len
+    max_param = np.max(np.divide(np.abs(scaled_weighted_ydotX),N))
+    # this formula for max_param is from Regularization Paths for Generalized Linear Models via Coordinate Descent by Friedman et. al.
+    candidate_params = compute_candidate_params(max_param)
+    return candidate_params
+
+
+def compute_scaledwydotwX_from_weighted(wydotwX,data):
+    # yst\dot Xst = (y\dot X - M\mu_y \mu_X) / (\sigma_y \sigma_X)
+    M = data.active_len
+    wyst_dot_wXst = np.divide(np.subtract(wydotwX,np.multiply(M,np.multiply(data.weighted_meanX,data.weighted_meany)))
+                            ,np.multiply(data.weighted_stdX,data.weighted_stdy))
+    return wyst_dot_wXst

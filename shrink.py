@@ -24,4 +24,4 @@ class L1_update(Callback):
 
     def on_batch_end(self,batch, logs={}):
         l1 = self.shrink_weights_fn([])
-        print("L1", l1[0])
+#        print("L1", l1[0])

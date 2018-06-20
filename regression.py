@@ -14,7 +14,7 @@ import pdb
 import shrink
 
 class regression:
-    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=200):
+    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=10):
         self.fit_intercept = fit_intercept
         self.normalize = True # always normalize
         self.lr = lr
@@ -27,9 +27,10 @@ class regression:
         # used self.coef and self.intercept to compute predicted sumstats on data
         # formula for chisq is N*annot_ld*self.coef + self.intercept
         # compute the weighted sum of squared loss on data
+        #TODO there's something wrong with this function
         d = u.read_h5(data.X)
         val_annotld = u.get_active(d,data.active_ind) # output one ndarray represent validation matrix
-        val_chisq = u.read_chisq_from_ss(data.y,data.active_ind) # ndarray of validation chisq stats
+        val_chisq = u.read_chisq_from_ss(data.y,data.active_ind).reshape(-1,1) # ndarray of validation chisq stats
         val_weights = u.get_active_weights(data.weights,data.active_ind) # ndarray of validation weights
         if val_annotld.ndim == 1:
             val_annotld = val_annotld[np.newaxis].T
@@ -43,7 +44,7 @@ class regression:
          
 
 class Lasso(regression):
-    def __init__(self,alpha='CV',CV_folds=3,CV_epochs=100,**kwargs):
+    def __init__(self,alpha='CV',CV_folds=3,CV_epochs=10,**kwargs):
         super().__init__(**kwargs)
         self.alpha=alpha
         self.CV_folds=CV_folds
@@ -52,11 +53,11 @@ class Lasso(regression):
     def choose_param(self,data):
         # call this method if alpha is set to be 'CV'
         kf = KFold(n_splits = self.CV_folds)
-        candidate_params_for_scaled_weighted_data = get_candidate_params_for_scaled_weighted_data(data) 
-        cv_losses = compute_cvlosses(candidate_params_for_scaled_weighted_data,data,kf,'Lasso')
-        print(candidate_params_for_scaled_weighted_data[np.argmin(cv_losses)])
+        candidate_params = get_candidate_params(data) 
+        cv_losses = compute_cvlosses(candidate_params,data,kf,'Lasso')
+        best_alpha = candidate_params[np.argmin(cv_losses)]
         # TODO: if the mininum loss occurs at the smallest param, try smaller candidate params
-        return candidate_params_for_scaled_weighted_data[np.argmin(cv_losses)] 
+        return best_alpha
 
     def fit(self,data):
         print(self.alpha)
@@ -65,7 +66,7 @@ class Lasso(regression):
             self.alpha = self.choose_param(data)
             print('choosen alpha',self.alpha)
         model = Sequential()
-        model.add(Dense(1,input_dim=data.num_features+1,use_bias=False))
+        model.add(Dense(1,input_dim=data.num_features,use_bias=False))
         sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(data,self.minibatch_size),
@@ -86,7 +87,9 @@ class sk_LassoCV(regression):
 
     def fit(self,data):
         X,y = u.preprocess_data(data)
-        wX,wy = u.weight_Xy(data,X,y)
+        w = np.sqrt(u.get_active_weights(data.weights,data.active_ind))
+        w = np.array(w)
+        wX,wy = u.weight_Xy(w,X,y)
         from sklearn.linear_model import LassoCV
         model = LassoCV(fit_intercept=False)
         model.fit(wX,wy)
@@ -98,29 +101,14 @@ class sk_LassoCV(regression):
         self.alpha = model.alpha_
         return self.coef,self.intercept,self.alpha
         
-    def direct_fit(self,data):
-        # direct fit without manually weight and scale the data
-        X = u.read_h5(data.X)
-        if X.ndim == 1:
-            X = X[:].reshape(-1,1)
-        active_X = u.get_active(X,data.active_ind)
-        active_y = u.read_chisq_from_ss(data.y,data.active_ind)
-        w = u.get_active_weights(data.weights,data.active_ind)
-        from sklearn.linear_model import LassoCV
-        model = LassoCV()
-        model.fit(active_X,active_y,sample_weight = w)
-        self.coef = model.coef_/data.N
-        self.intercept = model.intercept_
-        self.alpha = model.alpha_
-        return self.coef,self.intercept,self.alpha
-
 class sk_OLS(regression):
     def __init__(self,**kwargs):
         super().__init__(**kwargs)
 
     def fit(self,data):
         X,y = u.preprocess_data(data)
-        wX,wy = u.weight_Xy(data,X,y) 
+        w = np.sqrt(u.get_active_weights(data.weights,data.active_ind))
+        wX,wy = u.weight_Xy(w,X,y) 
         from sklearn.linear_model import LinearRegression
         model = LinearRegression(fit_intercept=False)
         model.fit(wX,wy)
@@ -146,21 +134,17 @@ class sk_OLS(regression):
         self.intercept = model.intercept_
         return self.coef, self.intercept
 
-   
-
 def recover_coef_intercept(data,learned_coef):
     """ Recover true coef and intercept from the learned coef
     Learned coef is the coefficients for weighted scaled data
     The last element of learned coef is the intercept term
     """
-    mean_active_w,std_active_w = u.get_mean_std_w(data)
-    weighted_stdX_with_intercept = np.append(data.weighted_stdX,std_active_w)
-    coefs = learned_coef.flatten()
-    Ntrue_coef = data.weighted_stdy*(coefs/weighted_stdX_with_intercept)
-    true_coef = np.divide(Ntrue_coef[:-1],data.N)
-    true_intercept = Ntrue_coef[-1]
+    Ntrue_coef = learned_coef/data.X_scale
+    true_coef = Ntrue_coef/data.N
+    true_intercept = data.weighted_meany - data.weighted_meanX.dot(Ntrue_coef)
     return true_coef,true_intercept
 
+#TODO improve algorithm
 def generator(data,n):
     """
     Generates mini-batches of data
@@ -171,54 +155,43 @@ def generator(data,n):
     annotld = u.read_h5(data.X)
     chisq = np.array(pd.read_csv(data.y,delim_whitespace=True)['CHISQ'])
     all_w = np.array(pd.read_csv(data.weights,delim_whitespace=True).iloc[:,-1])
-    mean_active_w,std_active_w = u.get_mean_std_w(data)
-    stdized_w = (all_w - mean_active_w)/std_active_w # ideally we should standardize according to active_w without disrupting the indices
     num_batches = num_active_samples//n
     while True:
         i=1
         while i<=num_batches:
             batch_ind = active_ind[n*(i-1):n*i]
-            batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,all_w,stdized_w,batch_ind)
+            batch_X,batch_y = get_batch(data,annotld,chisq,all_w,batch_ind)
             i+=1
-            yield batch_ws_annotld,batch_ws_chisq
+            yield batch_X,batch_X
         # the last batch concatenates what remains and the head of data
         batch_ind = active_ind[n*(i-1):]+active_ind[:n-len(active_ind)+n*(i-1)]
         batch_ind.sort()
-        batch_ws_annotld,batch_ws_chisq = get_batch(data,annotld,chisq,all_w,stdized_w,batch_ind)
-        yield batch_ws_annotld,batch_ws_chisq
+        batch_X,batch_y = get_batch(data,annotld,chisq,all_w,batch_ind)
+        yield batch_X,batch_y
 
-def get_batch(data,annotld,chisq,all_w,stdized_w,batch_ind):
+#TODO improve algorithm
+def get_batch(data,X,y,w,batch_ind):
     """
     inputs:
     data object
     annotld = h5 dataset for annotation ld
     chisq = entire (not only active) chisq statistics as ndarray
     all_w = ndarray of weights that are ready to be multiplied into y and X
-    stdized_w = scaled full ready_to_multiply weights as ndarray
     batch_ind = the indices for this batch
     outputs:
-    weighted scaled batch annotation ld as ndarray
-    weighted scaled batch chisq statistics as ndarray
+    weighted scaled and centered batch annotation ld as ndarray
+    weighted centered batch chisq statistics as ndarray
     """
-    batch_chisq = chisq[batch_ind]
-    if annotld.ndim == 1:
-        batch_annotld = annotld[batch_ind]
+    batch_y = y[batch_ind]
+    batch_w = w[batch_ind]
+    if X.ndim == 1:
+        batch_X = X[batch_ind]
     else:
-        batch_annotld = annotld[batch_ind,:]
-    batch_w = all_w[batch_ind]
-    batch_stdized_w = stdized_w[batch_ind]
-    if batch_annotld.ndim == 1:
-        w_annotld = batch_w*batch_annotld
-    else:
-        w_annotld = np.multiply(batch_w[np.newaxis].T,batch_annotld) # w*X
-    w_chisq = np.multiply(batch_w,batch_chisq) # w*y
-    pdb.set_trace()
-    ws_annotld = (w_annotld - data.weighted_meanX)/data.weighted_stdX
-    ws_annotld_with_intercept = u.attach_column(ws_annotld,batch_stdized_w) # add column of stdized_tomulti_w to regressors
-    ws_chisq = (w_chisq - data.weighted_meany)/data.weighted_stdy
-    return ws_annotld_with_intercept,ws_chisq
-
-   
+        batch_X = X[batch_ind,:]
+    sc_X,c_y = u.center_scale_Xy(batch_X,batch_y,data)
+    sqrt_w = np.sqrt(batch_w)
+    w_sc_X,w_c_y = u.weight_Xy(sqrt_w,sc_X,c_y)
+    return w_sc_X,w_c_y   
 
 def compute_cvlosses(candidate_params,data,kf,reg_method):
     """
@@ -250,12 +223,12 @@ def compute_cvlosses(candidate_params,data,kf,reg_method):
     return losses
 
 
-def get_candidate_params_for_scaled_weighted_data(data):
-    # assuming the input data is unscaled, but has attributes mean and std
-    scaled_weighted_ydotX = compute_scaled_weighted_ydotX(data) #ndarray
-    N = data.active_len
-    max_param = np.max(np.divide(np.abs(scaled_weighted_ydotX),N)) 
-    # this formula for max_param is from Regularization Paths for Generalized Linear Models via Coordinate Descent by Friedman et. al.
+def get_candidate_params(data):
+    # new_X = (X-weighted_meanX)/X_scale and new_y = y - weighted_meany
+    # (1/N) * max_j|<new_X_j,new_y>| 
+    # this formula is from Regularization Paths for Generalized Linear Models via Coordinate Descent by Friedman et. al. 
+    new_ydotX = compute_new_ydotX(data) #ndarray
+    max_param = np.max(np.divide(np.abs(new_ydotX),data.N)) 
     candidate_params = compute_candidate_params(max_param)
     return candidate_params
 
@@ -264,26 +237,28 @@ def compute_candidate_params(max_param):
     candidate_params = np.array([max_param*(2**-i) for i in range(1,11)])
     return candidate_params
 
-def compute_scaled_weighted_ydotX(data):
-    # the idea is to multiply y and X by weights, standardize them then compute the dot product
-    # but realistically we have computational constraints so we need to chunck the data
-    wy = u.compute_wy(data) #ndarray
-    chuncks = u.make_strips(data) # indices of column chuncks
+#TODO improve algorithm
+def compute_new_ydotX(data):
+    # restricted to active_ind
+    # compute new_X = (X-weighted_meanX)/X_scale and new_y = y - weighted_meany
+    # then compute the dot product of new_y and every column of new_X
+    # but realistically we have computational constraints so we need to strip the data into smaller column sizes
+    active_w = u.get_active_weights(data.weights,data.active_ind)
+    active_y = u.read_chisq_from_ss(data.y,data.active_ind)
+    c_y = active_y - data.weighted_meany
+    new_y = active_w*active_y
     dot = []
-    for ind in chuncks:
-        wchunck = u.compute_weighted_chunck(data,ind)
-        dot.append(wy.dot(wchunck))
+    X = u.read_h5(data.X)
+    for strip in data.X_strips:
+        start,end = strip
+        if X.ndim == 1:
+            X = X[:].reshape(-1,1)
+        X_strip = u.get_active(X[:,start:end],data.active_ind)
+        sc_X = (X_strip - data.weighted_meanX[start:end])/data.X_scale[start:end]
+        new_X = active_w.values.reshape(-1,1)*sc_X
+        dot.append(new_y.dot(new_X))
     if len(dot) == 1:
-        wydotwX = dot
+        new_dot = dot
     else:
-        wydotwX = np.concatenate(dot,axis=0)
-    scaled_weighted_ydotX = compute_scaledwydotwX_from_weighted(wydotwX,data)
-    return scaled_weighted_ydotX
-
-
-def compute_scaledwydotwX_from_weighted(wydotwX,data):
-    # yst\dot Xst = (y\dot X - M\mu_y \mu_X) / (\sigma_y \sigma_X)
-    M = data.active_len
-    wyst_dot_wXst = np.divide(np.subtract(wydotwX,np.multiply(M,np.multiply(data.weighted_meanX,data.weighted_meany)))
-                            ,np.multiply(data.weighted_stdX,data.weighted_stdy))
-    return wyst_dot_wXst
+        new_dot = np.concatenate(dot,axis=0)
+    return new_dot

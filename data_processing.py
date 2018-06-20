@@ -173,6 +173,7 @@ def get_traintest_ind(args):
     final_test_ind = get_endpoints(test_ind)
     return final_train_ind,final_test_ind
 
+#TODO improve algorithm
 def get_endpoints(l):
     """
     input a list l. For example [1,2,4,5,6,8,9,12]

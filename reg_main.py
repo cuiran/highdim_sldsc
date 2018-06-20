@@ -14,9 +14,9 @@ def perform_regression(args,data,**kwargs):
     elif reg_method == 'LassoOLS':
         regr.LassoOLS()
     elif reg_method == 'skLassoCV':
-        if args.fit == 'direct':
-            print('Performing sklearn LassoCV direct fit...')
-            #TODO finish writing this
+        print('Performing sklearn LassoCV fit...')
+        reg_obj = regr.sk_LassoCV(*kwargs)
+        reg_obj.fit(data)
     elif reg_method == 'skOLS':
         if args.fit == 'direct':
             print('Performing sklearn OLS direct fit...')

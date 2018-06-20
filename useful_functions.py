@@ -31,7 +31,7 @@ def col_strip(X, list_list_ind):
     strips = [X[:,list_ind[0]:list_ind[1]] for list_ind in list_list_ind ]
     return strips
 
-
+#TODO improve algorithm
 def get_active(array, list_list_ind):
     # Given a matrix X, and a list of list of start-end indices, cut X by rows of those indcies
     if array.ndim == 2:
@@ -48,13 +48,11 @@ def read_chisq_from_ss(ss_file, active_ind):
     chisq = get_active(chisq_col, active_ind)
     return chisq
 
-
 def chisq_sum_all(ss_file, active_ind):
     active_chisq = read_chisq_from_ss(ss_file, active_ind)
     return np.sum(active_chisq)
 
 
-#NAME CHANGE:  make_chuncks --> make_strips
 def make_strips(data, stripsize=1):
     # stripping data.X by column (After chuncking by row), default strip size is 1
     # output an list of lists of endpoints
@@ -80,36 +78,27 @@ def get_strip_active_X(X,strip,active_ind):
     return active_X_strip
 
 def compute_weighted_chunck(data, ind):
-# for the strip of X given by ind (after chuncking by active indcies), compute weights times chunck
-# return ndarray of weighted chunck
-# ind is given as a list of start and end of columns
-
-# Reading X and weights
+    # for the strip of X given by ind (after chuncking by active indcies), compute weights times chunck
+    # return ndarray of weighted chunck
+    # ind is given as a list of start and end of columns
     X = read_h5(data.X)
     weights_tb = pd.read_csv(data.weights, delim_whitespace=True)
     weights = np.array(weights_tb.iloc[:,-1])
-
-# Chuncking X by row (Acitve indcies) then stripping by col (ind)
-    if active_X.ndim == 1:
+    if X.ndim == 1:
         active_X_strip = get_active(X,data.active_ind)
     else:
         active_X_strip = get_strip_active_X(X,ind,data.active_ind)
-
-# Chuncking weights by row (Acitve indcies) then stripping by col (ind)
     active_weights = get_active(weights, data.active_ind)
     weighted_chunck = np.transpose(np.multiply(np.transpose(active_X_strip),active_weights)) #double transposing to allow broadcasting
     return weighted_chunck
 
 
 def compute_wy(data):
-# compute weights times y
-# return ndarray of weighted chisq
-
-# Reading y and chuncking it
+    # compute weights times y
+    # return ndarray of weighted chisq
     y_tb = pd.read_csv(data.y, delim_whitespace=True)
     chisq = np.array(y_tb['CHISQ'])
     active_chisq = get_active(chisq, data.active_ind)
-# Reading weights and chuncking
     weights_tb = pd.read_csv(data.weights, delim_whitespace=True)
     weights = np.array(weights_tb['WEIGHT'])
     weights = get_active(weights, data.active_ind)
@@ -185,26 +174,28 @@ def get_active_weights(weights_file,active_ind):
             w = np.concatenate((w,w_df.iloc[start:end,-1]),axis=0)
         return w
 
+def center_scale_Xy(X,y,data):
+    centered_X = X - data.weighted_meanX
+    new_X = centered_X/data.X_scale
+    new_y = y - data.weighted_meany
+    if X.ndim == 1:
+        new_X = new_X.reshape(-1,1)
+    return new_X,new_y
+
 def preprocess_data(data):
     # this is for small data
     # center X and y with weighted mean and scale X with the L2 norm of X - weighted_mean(X)
     # no scaling for y
     # return the centered scaled active X and centered active y
     active_X = get_active(read_h5(data.X),data.active_ind)
-    X = active_X - data.weighted_meanX
-    X /= data.X_scale
     active_y = read_chisq_from_ss(data.y,data.active_ind)
-    y = active_y - data.weighted_meany
-    if X.ndim == 1:
-        X = X.reshape(-1,1)
-    return X, y
+    new_X,new_y = center_scale_Xy(active_X,active_y,data)
+    return new_X,new_y
 
-def weight_Xy(data,X,y):
+def weight_Xy(w,X,y):
     # this is for small data
-    # multiply X and y by the square root of w
-    # data.weights stores the weights that's approx inverse of estimated CVF
-    w = u.get_active_weights(data.weights,data.active_ind)
-    w = np.sqrt(w)
-    new_X = w.values.reshape(-1,1)*X
+    # multiply X and y by w
+    # w is approximately the square root of estimated variance
+    new_X = w.reshape(-1,1)*X
     new_y = w*y
     return new_X,new_y
