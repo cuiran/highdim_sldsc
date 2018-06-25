@@ -66,30 +66,44 @@ class data:
                 length += i[1]-i[0]
             self._active_len = length
         return self._active_len
-
+#TODO improve algorithm
     @property
     def mean_X(self):
         if not self._mean_X:
-            d = u.read_h5(data.X)
-            sum_active_rows = 0
-            for i in self.active_ind:
-                start,end = i
-                sum_chunck = np.sum(d[start:end,:],axis=0)
-                sum_active_rows += sum_chunck
-            self._mean_X = np.divide(sum_active_rows,self.active_len)
+            X = u.read_h5(self.X)
+            mean = []
+            std = []
+            for strip in self.X_strips:
+                X_strip = u.get_strip_active_X(X,strip,self.active_ind)
+                mean_strip = np.mean(X_strip,axis=0)
+                mean.append(mean_strip)
+                std_strip = np.std(X_strip,axis=0)
+                std.append(std_strip)
+            mean = np.array(mean)
+            std = np.array(std)
+            self._mean_X = mean.flatten()
+            self._std_X = std.flatten()
         return self._mean_X
 
     @property
     def std_X(self):
         if not self._std_X:
-            d = u.read_h5(data.X)
-            sum_sqdiff = 0
-            for i in self.active_ind:
-                start,end = i
-                sum_sqdiff_chunck = np.sum((d[start:end,:] - self.mean_X)**2,axis=0)
-                sum_sqdiff += sum_sqdiff_chunck
-            self._std_X = np.sqrt(np.divide(sum_sqdiff,self.active_len))
+            self.mean_X(self)
         return self._std_X
+
+    @property
+    def mean_y(self):
+        if not self._mean_y:
+            y = u.read_chisq_from_ss(self.y,self.active_ind)
+            self._mean_y = np.mean(y)
+            self._std_y = np.std(y)
+        return self._mean_y
+
+    @property
+    def std_y(self):
+        if not self._std_y:
+            self.mean_y(self)
+        return self._std_y
  
     @property
     def sum_active_weights(self):

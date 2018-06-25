@@ -30,7 +30,7 @@ class regression:
         #TODO there's something wrong with this function
         d = u.read_h5(data.X)
         val_annotld = u.get_active(d,data.active_ind) # output one ndarray represent validation matrix
-        val_chisq = u.read_chisq_from_ss(data.y,data.active_ind).reshape(-1,1) # ndarray of validation chisq stats
+        val_chisq = u.read_chisq_from_ss(data.y,data.active_ind)# ndarray of validation chisq stats
         val_weights = u.get_active_weights(data.weights,data.active_ind) # ndarray of validation weights
         if val_annotld.ndim == 1:
             val_annotld = val_annotld[np.newaxis].T
@@ -86,16 +86,12 @@ class sk_LassoCV(regression):
         super().__init__(**kwargs)
 
     def fit(self,data):
-        X,y = u.preprocess_data(data)
-        w = np.sqrt(u.get_active_weights(data.weights,data.active_ind))
-        w = np.array(w)
-        wX,wy = u.weight_Xy(w,X,y)
+        new_X,new_y,X_scale,y_scale = u.preprocess_data(data)
         from sklearn.linear_model import LassoCV
         model = LassoCV(fit_intercept=False)
-        model.fit(wX,wy)
+        model.fit(new_X,new_y)
         learned_coef = model.coef_
-        true_coef = (learned_coef/data.X_scale)/data.N
-        true_intercept = data.weighted_meany - data.weighted_meanX.dot(learned_coef/data.X_scale)
+        true_coef,true_intercept = recover(data,learned_coef,X_scale,y_scale)
         self.coef = true_coef
         self.intercept = true_intercept
         self.alpha = model.alpha_
@@ -106,15 +102,12 @@ class sk_OLS(regression):
         super().__init__(**kwargs)
 
     def fit(self,data):
-        X,y = u.preprocess_data(data)
-        w = np.sqrt(u.get_active_weights(data.weights,data.active_ind))
-        wX,wy = u.weight_Xy(w,X,y) 
+        new_X,new_y,X_scale,y_scale = u.preprocess_data(data)
         from sklearn.linear_model import LinearRegression
         model = LinearRegression(fit_intercept=False)
-        model.fit(wX,wy)
+        model.fit(new_X,new_y)
         learned_coef = model.coef_
-        true_coef = (learned_coef/data.X_scale)/data.N
-        true_intercept = data.weighted_meany - data.weighted_meanX.dot(learned_coef/data.X_scale)
+        true_coef,true_intercept = recover(data,learned_coef,X_scale,y_scale)
         self.coef = true_coef
         self.intercept = true_intercept
         return self.coef,self.intercept
@@ -133,6 +126,12 @@ class sk_OLS(regression):
         self.coef = model.coef_/data.N
         self.intercept = model.intercept_
         return self.coef, self.intercept
+
+def recover(data,learned_coef,X_scale,y_scale):
+    Ntrue_coef = learned_coef*y_scale/X_scale
+    true_coef = Ntrue_coef/data.N
+    true_intercept = data.mean_y - data.mean_X.dot(Ntrue_coef)
+    return true_coef,true_intercept
 
 def recover_coef_intercept(data,learned_coef):
     """ Recover true coef and intercept from the learned coef

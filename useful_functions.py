@@ -189,13 +189,33 @@ def preprocess_data(data):
     # return the centered scaled active X and centered active y
     active_X = get_active(read_h5(data.X),data.active_ind)
     active_y = read_chisq_from_ss(data.y,data.active_ind)
-    new_X,new_y = center_scale_Xy(active_X,active_y,data)
-    return new_X,new_y
+    centered_X,centered_y = center(active_X,active_y,data)
+    w = get_active_weights(data.weights,data.active_ind)
+    sqrt_w = np.sqrt(w)
+    wX,wy = weight_Xy(w,centered_X,centered_y)
+    new_X,new_y,X_scale,y_scale = scale(wX,wy)
+    return new_X,new_y,X_scale,y_scale
 
 def weight_Xy(w,X,y):
     # this is for small data
     # multiply X and y by w
     # w is approximately the square root of estimated variance
-    new_X = w.reshape(-1,1)*X
+    if X.ndim == 1:
+        X = X[:,None]
+    new_X = w[:,None]*X
     new_y = w*y
     return new_X,new_y
+
+def center(X,y,data):
+    centered_X = X - data.mean_X
+    centered_y = y - data.mean_y
+    return centered_X,centered_y
+
+def scale(X,y):
+    # this is for small data
+    # return X/std(X), y/std(y)
+    X_scale = np.std(X,axis=0)
+    y_scale = np.std(y,axis=0)
+    return X*(1/X_scale),y*(1/y_scale),X_scale,y_scale
+
+

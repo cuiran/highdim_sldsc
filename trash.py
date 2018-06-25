@@ -180,3 +180,13 @@ def compute_scaledwydotwX_from_weighted(wydotwX,data):
     wyst_dot_wXst = np.divide(np.subtract(wydotwX,np.multiply(M,np.multiply(data.weighted_meanX,data.weighted_meany)))
                             ,np.multiply(data.weighted_stdX,data.weighted_stdy))
     return wyst_dot_wXst
+
+def preprocess_data(data):
+    # this is for small data
+    # center X and y with weighted mean and scale X with the L2 norm of X - weighted_mean(X)
+    # no scaling for y
+    # return the centered scaled active X and centered active y
+    active_X = get_active(read_h5(data.X),data.active_ind)
+    active_y = read_chisq_from_ss(data.y,data.active_ind)
+    new_X,new_y = center_scale_Xy(active_X,active_y,data)
+    return new_X,new_y
