@@ -25,6 +25,28 @@ def h5_sum_cols(h5file, active_ind):
     else:
         s = np.sum(big_chunck, axis=1)
         return s
+#TODO improve algorithm
+def get_endpoints(l):
+    """
+    input a list l. For example [1,2,4,5,6,8,9,12]
+    output a list of lists of two elements [[1,3],[4,7],[8,10],[12,13]]
+    """
+    i = 0
+    a = l[0]
+    endpoints = []
+    start=a
+    while i<len(l)-1:
+        if a+1 == l[i+1]:
+            a+=1
+            i+=1
+        else:
+            end = a+1
+            endpoints.append([start,end])
+            i+=1
+            a=l[i]
+            start=a
+    endpoints.append([start,l[-1]+1])
+    return endpoints
 
 def col_strip(X, list_list_ind):
     # Given a matrix X, and a list of list of start-end indices, cut X by columns of those indcies
@@ -52,6 +74,9 @@ def chisq_sum_all(ss_file, active_ind):
     active_chisq = read_chisq_from_ss(ss_file, active_ind)
     return np.sum(active_chisq)
 
+def get_num_SNPs(args):
+    ss_df = pd.read_csv(args.sumstats,delim_whitespace=True)
+    return ss_df.shape[0]
 
 def make_strips(data, stripsize=1):
     # stripping data.X by column (After chuncking by row), default strip size is 1
@@ -172,7 +197,7 @@ def get_active_weights(weights_file,active_ind):
         for i in active_ind[1:]:
             start,end = i
             w = np.concatenate((w,w_df.iloc[start:end,-1]),axis=0)
-        return w
+        return np.array(w)
 
 def center_scale_Xy(X,y,data):
     centered_X = X - data.weighted_meanX
@@ -192,7 +217,7 @@ def preprocess_data(data):
     centered_X,centered_y = center(active_X,active_y,data)
     w = get_active_weights(data.weights,data.active_ind)
     sqrt_w = np.sqrt(w)
-    wX,wy = weight_Xy(w,centered_X,centered_y)
+    wX,wy = weight_Xy(sqrt_w,centered_X,centered_y)
     new_X,new_y,X_scale,y_scale = scale(wX,wy)
     return new_X,new_y,X_scale,y_scale
 

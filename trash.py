@@ -190,3 +190,20 @@ def preprocess_data(data):
     active_y = read_chisq_from_ss(data.y,data.active_ind)
     new_X,new_y = center_scale_Xy(active_X,active_y,data)
     return new_X,new_y
+
+    @property
+    def X_scale(self):
+        # L2 norm of X - weighted_meanX
+        centered_norm = []
+        for strip in self.X_strips:
+            X = u.read_h5(self.X)
+            X_active_strip = u.get_strip_active_X(X,strip,self.active_ind)
+            X_offset_strip = self.weighted_meanX[strip[0]:strip[1]]
+            X_centered_strip = X_active_strip - X_offset_strip
+            norm_strip = np.linalg.norm(X_centered_strip,axis=0,ord=2)
+            centered_norm.append(norm_strip)
+        centered_norm = np.array(centered_norm)
+        self._X_scale = centered_norm.flatten()
+        return self._X_scale
+
+

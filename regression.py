@@ -60,8 +60,9 @@ class Lasso(regression):
         return best_alpha
 
     def fit(self,data):
-        print(self.alpha)
         #  weight and scale the data before fitting model
+        processed_data = d.preprocess_large(data) # data object with centered weighted and scaled data
+        pdb.set_trace()
         if self.alpha == 'CV':
             self.alpha = self.choose_param(data)
             print('choosen alpha',self.alpha)
@@ -131,16 +132,6 @@ def recover(data,learned_coef,X_scale,y_scale):
     Ntrue_coef = learned_coef*y_scale/X_scale
     true_coef = Ntrue_coef/data.N
     true_intercept = data.mean_y - data.mean_X.dot(Ntrue_coef)
-    return true_coef,true_intercept
-
-def recover_coef_intercept(data,learned_coef):
-    """ Recover true coef and intercept from the learned coef
-    Learned coef is the coefficients for weighted scaled data
-    The last element of learned coef is the intercept term
-    """
-    Ntrue_coef = learned_coef/data.X_scale
-    true_coef = Ntrue_coef/data.N
-    true_intercept = data.weighted_meany - data.weighted_meanX.dot(Ntrue_coef)
     return true_coef,true_intercept
 
 #TODO improve algorithm

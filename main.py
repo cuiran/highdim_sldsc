@@ -3,6 +3,7 @@ import argparse
 import data_processing as d
 import reg_main as r
 import post_processing as p
+import useful_functions as u
 import pdb
 
 
@@ -19,7 +20,7 @@ def highdim_sldsc(args):
         Save the un-standardized coefficients and bias to file
     """
     d.match_SNPs(args)
-    num_SNPs = d.get_num_SNPs(args)
+    num_SNPs = u.get_num_SNPs(args)
     original_data = d.data(args.ld,args.sumstats,args.weights_ld,[[0,num_SNPs]])
     # TODO add shuffling data step
     train_ind,test_ind = d.get_traintest_ind(args)
