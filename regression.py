@@ -12,9 +12,10 @@ import regression as regr
 import useful_functions as u
 import pdb
 import shrink
+import copy
 
 class regression:
-    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=10):
+    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=20):
         self.fit_intercept = fit_intercept
         self.normalize = True # always normalize
         self.lr = lr
@@ -23,20 +24,20 @@ class regression:
         self.minibatch_size = minibatch_size
         self.epochs = epochs
 
-    def evaluate(self,data):
+    def evaluate(self,original_data):
         # used self.coef and self.intercept to compute predicted sumstats on data
         # formula for chisq is N*annot_ld*self.coef + self.intercept
         # compute the weighted sum of squared loss on data
         #TODO there's something wrong with this function
-        d = u.read_h5(data.X)
-        val_annotld = u.get_active(d,data.active_ind) # output one ndarray represent validation matrix
-        val_chisq = u.read_chisq_from_ss(data.y,data.active_ind)# ndarray of validation chisq stats
-        val_weights = u.get_active_weights(data.weights,data.active_ind) # ndarray of validation weights
+        d = u.read_h5(original_data.X)
+        val_annotld = u.get_active(d,original_data.active_ind) # output one ndarray represent validation matrix
+        val_chisq = u.read_chisq_from_ss(original_data.y,original_data.active_ind)[:,None]# ndarray of validation chisq stats
+        val_weights = u.get_active_weights(original_data.weights,original_data.active_ind) # ndarray of validation weights
         if val_annotld.ndim == 1:
             val_annotld = val_annotld[np.newaxis].T
-            pred_chisq = np.multiply(data.N,val_annotld.dot(self.coef))+self.intercept
+            pred_chisq = np.multiply(original_data.N,val_annotld.dot(self.coef))+self.intercept
         else:
-            pred_chisq = np.multiply(data.N,val_annotld.dot(self.coef))+self.intercept
+            pred_chisq = np.multiply(original_data.N,val_annotld.dot(self.coef))+self.intercept
         weighted_sumsqerror = val_weights.dot((pred_chisq-val_chisq)**2)
         self.cv_loss = weighted_sumsqerror
         return weighted_sumsqerror
@@ -50,34 +51,32 @@ class Lasso(regression):
         self.CV_folds=CV_folds
         self.CV_epochs = CV_epochs
 
-    def choose_param(self,data):
+    def choose_param(self,processed_data,original_data):
         # call this method if alpha is set to be 'CV'
         kf = KFold(n_splits = self.CV_folds)
-        candidate_params = get_candidate_params(data) 
-        cv_losses = compute_cvlosses(candidate_params,data,kf,'Lasso')
+        candidate_params = get_candidate_params(processed_data) 
+        cv_losses = compute_cvlosses(candidate_params,processed_data,original_data,kf,'Lasso')
         best_alpha = candidate_params[np.argmin(cv_losses)]
         # TODO: if the mininum loss occurs at the smallest param, try smaller candidate params
         return best_alpha
 
-    def fit(self,data):
+    def fit(self,processed_data,original_data):
         #  weight and scale the data before fitting model
-        processed_data = d.preprocess_large(data) # data object with centered weighted and scaled data
-        pdb.set_trace()
         if self.alpha == 'CV':
-            self.alpha = self.choose_param(data)
+            self.alpha = self.choose_param(processed_data,original_data)
             print('choosen alpha',self.alpha)
         model = Sequential()
-        model.add(Dense(1,input_dim=data.num_features,use_bias=False))
+        model.add(Dense(1,input_dim=processed_data.num_features,use_bias=False))
         sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
-        model.fit_generator(generator(data,self.minibatch_size),
-                            steps_per_epoch=data.active_len//self.minibatch_size,
+        model.fit_generator(generator(processed_data,self.minibatch_size),
+                            steps_per_epoch=processed_data.active_len//self.minibatch_size,
                             epochs=self.epochs,verbose=1,
                             callbacks = [shrink.L1_update(model.trainable_weights[:1],
                                 lr=self.lr,regularizer=self.alpha)])
         learned_coef= model.get_weights()[0]
         # the learned intercept is the last element in the learned_coef array
-        true_coef,true_intercept = recover_coef_intercept(data,learned_coef)
+        true_coef,true_intercept = recover(learned_coef,processed_data)
         self.coef = true_coef
         self.intercept = true_intercept
         return self.coef,self.intercept,self.alpha
@@ -128,127 +127,119 @@ class sk_OLS(regression):
         self.intercept = model.intercept_
         return self.coef, self.intercept
 
-def recover(data,learned_coef,X_scale,y_scale):
-    Ntrue_coef = learned_coef*y_scale/X_scale
-    true_coef = Ntrue_coef/data.N
-    true_intercept = data.mean_y - data.mean_X.dot(Ntrue_coef)
+def recover(learned_coef,processed_data):
+    X_scale = processed_data.X_scale.reshape(1,-1).T
+    Ntrue_coef = learned_coef*processed_data.y_scale/X_scale
+    true_coef = Ntrue_coef/processed_data.N
+    true_intercept = processed_data.y_offset - processed_data.X_offset.dot(Ntrue_coef)
     return true_coef,true_intercept
 
-#TODO improve algorithm
+#def generator(data,n):
+#    """
+#    Generates mini-bathces of data
+#    data object should be processed already. Processed data.y only has one column
+#    n = mini batch size
+#    """
+#    pdb.set_trace()
+#    X = u.read_h5(data.X)
+#    y = np.array(pd.read_csv(data.y,delim_whitespace=True).iloc[:,0])
+#    b = data.active_len//n # number of complete batches from one iteration
+#    while True:
+#        i=1
+#        while i <= b:
+#            batch_X = X[n*(i-1):n*i,:]
+#            batch_y = y[n*(i-1):n*i]
+#            i+=1
+#            yield batch_X,batch_y
+#        # the last batch consist of what's remaining in the data and the head of data
+#        remaining_X = X[n*(i-1):,:]
+#        need_from_head = n - remaining_X.shape[0]
+#        batch_X = np.concatenate((remaining_X,X[:need_from_head,:]),axis=0)
+#        remaining_y = y[n*(i-1):]
+#        batch_y = np.concatenate((remaining_y,y[:need_from_head]),axis=0)
+#        yield batch_X,batch_y
+
 def generator(data,n):
-    """
-    Generates mini-batches of data
-    n = mini batch size
-    """
-    active_ind = u.expand_ind(data.active_ind) 
-    num_active_samples = data.active_len
-    annotld = u.read_h5(data.X)
-    chisq = np.array(pd.read_csv(data.y,delim_whitespace=True)['CHISQ'])
-    all_w = np.array(pd.read_csv(data.weights,delim_whitespace=True).iloc[:,-1])
-    num_batches = num_active_samples//n
+    X = u.read_h5(data.X)
+    y = np.array(pd.read_csv(data.y,delim_whitespace=True).iloc[:,0])
     while True:
-        i=1
-        while i<=num_batches:
-            batch_ind = active_ind[n*(i-1):n*i]
-            batch_X,batch_y = get_batch(data,annotld,chisq,all_w,batch_ind)
-            i+=1
-            yield batch_X,batch_X
-        # the last batch concatenates what remains and the head of data
-        batch_ind = active_ind[n*(i-1):]+active_ind[:n-len(active_ind)+n*(i-1)]
-        batch_ind.sort()
-        batch_X,batch_y = get_batch(data,annotld,chisq,all_w,batch_ind)
-        yield batch_X,batch_y
+        pdb.set_trace()
+        j = 1 # which interval of active_ind we are on
+        while j <= len(data.active_ind):
+            #TODO this doesn't work when active_ind has multiple intervals
+            i = 1 # batch number
+            start = data.active_ind[j-1][0]
+            end = data.active_ind[j-1][1]
+            b = (end - start)//n
+            while i<=b:
+                batch_X = X[n*(i-1)+start:n*i+start,:]
+                batch_y = y[n*(i-1)+start:n*i+start]
+                i+=1
+                yield batch_X,batch_y
+            pdb.set_trace()
+            j += 1
+             
+            remaining_X = X[n*(i-1)+start:end,:]
+            need_from_next = n - remaining_X.shape[0]
+            batch_X = np.concatenate((remaining_X,X[start:need_from_head+start,:]),axis=0)
+            remaining_y = y[n*(i-1)+start:end]
+            batch_y = np.concatenate((remaining_y,y[start:need_from_head+start]),axis=0)
+            j+=1
+            yield batch_X,batch_y
 
-#TODO improve algorithm
-def get_batch(data,X,y,w,batch_ind):
-    """
-    inputs:
-    data object
-    annotld = h5 dataset for annotation ld
-    chisq = entire (not only active) chisq statistics as ndarray
-    all_w = ndarray of weights that are ready to be multiplied into y and X
-    batch_ind = the indices for this batch
-    outputs:
-    weighted scaled and centered batch annotation ld as ndarray
-    weighted centered batch chisq statistics as ndarray
-    """
-    batch_y = y[batch_ind]
-    batch_w = w[batch_ind]
-    if X.ndim == 1:
-        batch_X = X[batch_ind]
-    else:
-        batch_X = X[batch_ind,:]
-    sc_X,c_y = u.center_scale_Xy(batch_X,batch_y,data)
-    sqrt_w = np.sqrt(batch_w)
-    w_sc_X,w_c_y = u.weight_Xy(sqrt_w,sc_X,c_y)
-    return w_sc_X,w_c_y   
+def generator(data,n):
+    X = u.read_h5(data.X)
+    y = np.array(pd.read_csv(data.y,delim_whitespace=True).iloc[:,0])
+    while True:
+        
 
-def compute_cvlosses(candidate_params,data,kf,reg_method):
+def compute_cvlosses(candidate_params,dd,od,kf,reg_method):
     """
     candidate_params: a list of candidate parameters
-    data: a data object to compute losses on
+    dd: a data object to compute losses on, this is the processed data
+    od: original data object contains un-processed data
     kf: object created by KFold, contains indices for train and validation sets
     this function outputs an array of losses for the list of candidate_params
     """
-    active_ss_array = u.read_chisq_from_ss(data.y,data.active_ind)
+    y = np.array(pd.read_csv(dd.y,delim_whitespace=True).iloc[:,0])
     losses = []
-    for param in candidate_params:
+    for p in candidate_params:
         cv_loss = 0
-        for train_ind,val_ind in kf.split(active_ss_array):
-            train_ind = u.convert_to_original_ind(data.active_ind,train_ind)
-            val_ind = u.convert_to_original_ind(data.active_ind,val_ind)
-            train_active_ind = d.get_endpoints(train_ind)
-            val_active_ind = d.get_endpoints(val_ind)
-            train_obj = d.data(data.X,data.y,data.weights,train_active_ind)
-            val_obj = d.data(data.X,data.y,data.weights,val_active_ind)
+        for train_ind,val_ind in kf.split(y):
+            ti = u.get_endpoints(train_ind)
+            vi = u.get_endpoints(val_ind)
+            tr_obj = copy.copy(dd)
+            tr_obj.active_ind = ti
+            val_obj = copy.copy(od)
+            val_obj.active_ind = u.get_endpoints(u.convert_to_original_ind(od.active_ind,u.expand_ind(vi)))
             if reg_method == 'Lasso':
-                cv_lasso = regr.Lasso(alpha = param)
-                cv_lasso.alpha = param
+                cv_lasso = regr.Lasso(alpha = p)
                 cv_lasso.epochs = cv_lasso.CV_epochs
-                cv_lasso.fit(train_obj)
-                #TODO this is hard coded for Lasso because there's a weird bug about invalid index to scalar variable if I use r.perform_regression
-                cv_lasso.evaluate(val_obj) 
+                cv_lasso.fit(tr_obj,od)
+                cv_lasso.evaluate(val_obj)
                 cv_loss += cv_lasso.cv_loss
         losses.append(cv_loss)
     return losses
 
+def get_candidate_params(dd):
+    # dd is processed data object with dd.X (data.y) storing centered, weighted, scaled X (y)
+    # max lambda that yield any interesting (nonzero) coef is
+    # (1/N) * max_j|<new_X_j,new_y>|
+    # this formula is from Regularization Paths for Generalized Linear Models via Coordinate Descent by Friedman et. al.
+    ydotX = compute_ydotX(dd)
+    max_param = np.max(np.divide(np.abs(ydotX),dd.N))
+    candidates = np.array([max_param*(2**-i) for i in range(1,11)])
+    return candidates
 
-def get_candidate_params(data):
-    # new_X = (X-weighted_meanX)/X_scale and new_y = y - weighted_meany
-    # (1/N) * max_j|<new_X_j,new_y>| 
-    # this formula is from Regularization Paths for Generalized Linear Models via Coordinate Descent by Friedman et. al. 
-    new_ydotX = compute_new_ydotX(data) #ndarray
-    max_param = np.max(np.divide(np.abs(new_ydotX),data.N)) 
-    candidate_params = compute_candidate_params(max_param)
-    return candidate_params
-
-def compute_candidate_params(max_param):
-    # given max parameter, create list of candidate params by dividing max_param by 2 for 10 times
-    candidate_params = np.array([max_param*(2**-i) for i in range(1,11)])
-    return candidate_params
-
-#TODO improve algorithm
-def compute_new_ydotX(data):
-    # restricted to active_ind
-    # compute new_X = (X-weighted_meanX)/X_scale and new_y = y - weighted_meany
-    # then compute the dot product of new_y and every column of new_X
-    # but realistically we have computational constraints so we need to strip the data into smaller column sizes
-    active_w = u.get_active_weights(data.weights,data.active_ind)
-    active_y = u.read_chisq_from_ss(data.y,data.active_ind)
-    c_y = active_y - data.weighted_meany
-    new_y = active_w*active_y
+def compute_ydotX(dd):
+    # dd is processed data
+    # compute dot product of y and every column of X
+    X = u.read_h5(dd.X)
+    y = np.array(pd.read_csv(dd.y,delim_whitespace=True).iloc[:,0])
     dot = []
-    X = u.read_h5(data.X)
-    for strip in data.X_strips:
-        start,end = strip
-        if X.ndim == 1:
-            X = X[:].reshape(-1,1)
-        X_strip = u.get_active(X[:,start:end],data.active_ind)
-        sc_X = (X_strip - data.weighted_meanX[start:end])/data.X_scale[start:end]
-        new_X = active_w.values.reshape(-1,1)*sc_X
-        dot.append(new_y.dot(new_X))
-    if len(dot) == 1:
-        new_dot = dot
-    else:
-        new_dot = np.concatenate(dot,axis=0)
-    return new_dot
+    for strip in dd.X_strips:
+        X_strip = u.get_strip_active_X(X,strip,dd.active_ind)
+        dot.append(y.dot(X_strip))
+    if len(dot)>1:
+        dot = np.concatenate(dot,axis=0)
+    return dot

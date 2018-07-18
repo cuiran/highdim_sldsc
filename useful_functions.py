@@ -192,7 +192,7 @@ def get_active_weights(weights_file,active_ind):
     start,end = active_ind[0]
     w = w_df.iloc[start:end,-1]
     if len(active_ind) == 1:
-        return w
+        return np.array(w)
     else:
         for i in active_ind[1:]:
             start,end = i

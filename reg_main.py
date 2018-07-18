@@ -1,4 +1,5 @@
 import regression as regr
+import data_processing as d
 import pdb
 
 def perform_regression(args,data,**kwargs):
@@ -7,7 +8,11 @@ def perform_regression(args,data,**kwargs):
         regr.OLS()
     elif reg_method == 'Lasso':
         lasso = regr.Lasso(**kwargs)
-        lasso.fit(data)
+        if not d.check_processed(data):
+            processed_data = d.preprocess_large(data)
+        else:
+            processed_data = d.read_processed(data)
+        lasso.fit(processed_data,data)
         reg_obj = lasso
     elif reg_method == 'ElasticNet':
         regr.ElasticNet()

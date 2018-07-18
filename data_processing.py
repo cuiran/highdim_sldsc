@@ -4,6 +4,7 @@ import h5py
 import pdb
 import useful_functions as u
 from memory_profiler import profile
+from os import path
 
 class data:
     def __init__(self,X,y,weights,active_ind):
@@ -228,9 +229,10 @@ def preprocess_large(dd):
     w_df.to_csv(dd.weights+'_processed.txt',sep='\t',index=False)
     sqrt_w = np.sqrt(np.array(w))
     new_data = data(dd.X+'_processed.h5',dd.y+'_processed.txt',
-                    dd.weights+'_processed.h5',[[0,dd.active_len]])
+                    dd.weights,[[0,dd.active_len]])
     new_data.X_offset = dd.mean_X
     new_data.X_scale = []
+    # center weight scale X
     first_strip = dd.X_strips[0]
     X_active_strip = u.get_strip_active_X(X,first_strip,dd.active_ind)
     if X_active_strip.ndim == 1:
@@ -241,7 +243,7 @@ def preprocess_large(dd):
     new_data.X_scale.append(X_strip_scale)
     new_X_strip = weighted_strip/X_strip_scale
     with h5py.File(new_data.X,'w') as f:
-        f.create_dataset('dataset',maxshape=X.shape,data=new_X_strip)
+        f.create_dataset('dataset',maxshape=(dd.active_len,X.shape[1]),data=new_X_strip)
     for strip in dd.X_strips[1:]:
         X_active_strip = u.get_strip_active_X(X,strip,dd.active_ind)
         centered_strip = X_active_strip - dd.mean_X[strip[0]:strip[1]]
@@ -251,14 +253,24 @@ def preprocess_large(dd):
         new_X_strip = weighted_strip/X_strip_scale
         append_to_h5(new_data.X,new_X_strip)
     new_data.X_scale = np.array(new_data.X_scale).flatten()
+    # center weight scale y
     y = u.read_chisq_from_ss(dd.y,dd.active_ind)
     new_data.y_offset = dd.mean_y
     centered_y = y - new_data.y_offset
     weighted_y = sqrt_w*centered_y
     new_data.y_scale = np.std(weighted_y)
     new_y = weighted_y/new_data.y_scale
-    new_y_df = pd.DataFrame(data=new_y,columns = ['y'])
+    new_y_df = pd.DataFrame(data=new_y,columns = ['CHISQ'])
     new_y_df.to_csv(new_data.y,sep='\t',index=False)
+    # save X_offset y_offset, X_scale, y_scale to file
+    Xoff_df = pd.DataFrame(data=new_data.X_offset,columns=['X_offset'])
+    Xoff_df.to_csv(dd.X+'_offset.txt',sep='\t',index=False)
+    Xscale_df = pd.DataFrame(data=new_data.X_scale,columns=['X_scale'])
+    Xscale_df.to_csv(dd.X+'_scale.txt',sep='\t',index=False)
+    yoff_df = pd.DataFrame(data=[new_data.y_offset],columns=['y_offset'])
+    yoff_df.to_csv(dd.y+'_offset.txt',sep='\t',index=False)
+    yscale_df = pd.DataFrame(data=[new_data.y_scale],columns=['y_scale'])
+    yscale_df.to_csv(dd.y+'_scale.txt',sep='\t',index=False)
     return new_data
 
 def append_to_h5(file_name,array):
@@ -269,3 +281,18 @@ def append_to_h5(file_name,array):
         d.resize(d.shape[1]+c, axis=1)
         d[:,-c:] = array
     return
+
+def check_processed(data):
+    # check if there's a processed version of data
+    answer = path.isfile(data.X+'_processed.h5') and path.isfile(data.y+'_processed.txt') and path.isfile(data.X+'_offset.txt') and path.isfile(data.X+'_scale.txt') and path.isfile(data.y+'_offset.txt') and path.isfile(data.y+'_scale.txt')
+    return answer
+
+def read_processed(d):
+    # construct data object that contains the processed version of d
+    dd = data(d.X+'_processed.h5',d.y+'_processed.txt',d.weights,[[0,d.active_len]])
+    dd.X_offset = np.array(pd.read_csv(d.X+'_offset.txt',delim_whitespace=True).iloc[:,0])
+    dd.X_scale = np.array(pd.read_csv(d.X+'_scale.txt',delim_whitespace=True).iloc[:,0])
+    dd.y_offset = np.array(pd.read_csv(d.y+'_offset.txt',delim_whitespace=True).iloc[0,0])
+    dd.y_scale = np.array(pd.read_csv(d.y+'_scale.txt',delim_whitespace=True).iloc[0,0])
+    dd._N = d.N
+    return dd
