@@ -1,10 +1,11 @@
-import numpy as np
-import pandas as pd
 import h5py
 import pdb
 import useful_functions as u
 from memory_profiler import profile
 from os import path
+import copy
+import pandas as pd
+import numpy as np
 
 class data:
     def __init__(self,X,y,weights,active_ind):
@@ -200,10 +201,10 @@ def compute_final_w(args,data):
     weights_corr = np.fmax(concated_weights,1.0) # prevent inverse from being too large
     # compute weights that correct some of the heteroskedasticity
     M = float(data.active_len)
-    sum_trainld = u.h5_sum_all(data.X,data.active_ind)
-    sum_trainss = u.chisq_sum_all(data.y,data.active_ind)
-    l = sum_trainld/M
-    s = sum_trainss/M
+    sum_ld = u.h5_sum_all(data.X,data.active_ind)
+    sum_ss = u.chisq_sum_all(data.y,data.active_ind)
+    l = sum_ld/M
+    s = sum_ss/M
     Ntau_hat = np.divide(s-1,l)
     weights_hetero = 2*((Ntau_hat*u.h5_sum_cols(data.X,data.active_ind)+1)**2)
     # multiply heteroskedasticity weights with correlation weights
@@ -225,11 +226,13 @@ def preprocess_large(dd):
     # store X_offset, y_offset, X_scale, and y_scale too
     X = u.read_h5(dd.X)
     w = u.get_active_weights(dd.weights,dd.active_ind)
-    w_df = pd.DataFrame(data=np.array(w),columns=['WEIGHTS'])
-    w_df.to_csv(dd.weights+'_processed.txt',sep='\t',index=False)
     sqrt_w = np.sqrt(np.array(w))
-    new_data = data(dd.X+'_processed.h5',dd.y+'_processed.txt',
-                    dd.weights,[[0,dd.active_len]])
+    new_data = copy.copy(dd)
+    pdb.set_trace()
+    new_data.X = dd.X+'_processed.h5'
+    new_data.y = dd.y+'_processed.txt'
+    new_data.weights = dd.weights+'_processed.txt'
+    new_data.active_ind = [[0,dd.active_len]]
     new_data.X_offset = dd.mean_X
     new_data.X_scale = []
     # center weight scale X
@@ -252,6 +255,14 @@ def preprocess_large(dd):
         new_data.X_scale.append(X_strip_scale)
         new_X_strip = weighted_strip/X_strip_scale
         append_to_h5(new_data.X,new_X_strip)
+    #shuffle and save X
+    f.close()
+    new_X = h5py.File(new_data.X,'r+')['dataset']
+    rng_state = np.random.get_state()
+    np.random.shuffle(new_X)
+    with h5py.File(new_data.X,'r+') as f:
+        f['dataset'][:] = new_X
+    f.close()
     new_data.X_scale = np.array(new_data.X_scale).flatten()
     # center weight scale y
     y = u.read_chisq_from_ss(dd.y,dd.active_ind)
@@ -260,6 +271,9 @@ def preprocess_large(dd):
     weighted_y = sqrt_w*centered_y
     new_data.y_scale = np.std(weighted_y)
     new_y = weighted_y/new_data.y_scale
+    # shuffle and save y
+    np.random.set_state(rng_state)
+    np.random.shuffle(new_y)
     new_y_df = pd.DataFrame(data=new_y,columns = ['CHISQ'])
     new_y_df.to_csv(new_data.y,sep='\t',index=False)
     # save X_offset y_offset, X_scale, y_scale to file
@@ -271,6 +285,12 @@ def preprocess_large(dd):
     yoff_df.to_csv(dd.y+'_offset.txt',sep='\t',index=False)
     yscale_df = pd.DataFrame(data=[new_data.y_scale],columns=['y_scale'])
     yscale_df.to_csv(dd.y+'_scale.txt',sep='\t',index=False)
+    # shuffle and save w
+    np.random.set_state(rng_state)
+    np.random.shuffle(w)
+    w_df = pd.DataFrame(data=np.array(w),columns=['WEIGHTS'])
+    w_df.to_csv(dd.weights+'_processed.txt',sep='\t',index=False)
+    new_data._N = dd.N
     return new_data
 
 def append_to_h5(file_name,array):
@@ -280,6 +300,7 @@ def append_to_h5(file_name,array):
         d = hf['dataset']
         d.resize(d.shape[1]+c, axis=1)
         d[:,-c:] = array
+    hf.close()
     return
 
 def check_processed(data):

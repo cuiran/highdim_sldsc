@@ -12,7 +12,7 @@ def process(args,reg,data):
     f.write("INTERCEPT \n")
     f.write(str(reg.intercept))
     f.close()
-    sse = reg.evaluate(data)
+    sse = reg.evaluate_weighted(data)
     sse_fname = args.output_folder+'weighted_error.txt'
     fi = open(sse_fname,'w')
     fi.write("WSSE \n")

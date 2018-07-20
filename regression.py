@@ -15,7 +15,7 @@ import shrink
 import copy
 
 class regression:
-    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=20):
+    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=50):
         self.fit_intercept = fit_intercept
         self.normalize = True # always normalize
         self.lr = lr
@@ -24,7 +24,7 @@ class regression:
         self.minibatch_size = minibatch_size
         self.epochs = epochs
 
-    def evaluate(self,original_data):
+    def evaluate_weighted(self,original_data):
         # used self.coef and self.intercept to compute predicted sumstats on data
         # formula for chisq is N*annot_ld*self.coef + self.intercept
         # compute the weighted sum of squared loss on data
@@ -39,13 +39,23 @@ class regression:
         else:
             pred_chisq = np.multiply(original_data.N,val_annotld.dot(self.coef))+self.intercept
         weighted_sumsqerror = val_weights.dot((pred_chisq-val_chisq)**2)
-        self.cv_loss = weighted_sumsqerror
+        self.wsse = weighted_sumsqerror
         return weighted_sumsqerror
+
+    def evaluate_no_weight(self,processed_data):
+        val_X = u.get_active(u.read_h5(processed_data.X),processed_data.active_ind)
+        val_y = u.read_chisq_from_ss(processed_data.y,processed_data.active_ind)[:,None]
+        if val_X.ndim == 1:
+            val_X = val_X[np.newaxis].T
+        pred_y = val_X.dot(self.fitted_coef)
+        sse = sum((pred_y - val_y)**2)
+        self.cv_loss = sse
+        return sse
         
          
 
 class Lasso(regression):
-    def __init__(self,alpha='CV',CV_folds=3,CV_epochs=10,**kwargs):
+    def __init__(self,alpha='CV',CV_folds=3,CV_epochs=30,**kwargs):
         super().__init__(**kwargs)
         self.alpha=alpha
         self.CV_folds=CV_folds
@@ -71,12 +81,12 @@ class Lasso(regression):
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(processed_data,self.minibatch_size),
                             steps_per_epoch=processed_data.active_len//self.minibatch_size,
-                            epochs=self.epochs,verbose=1,
+                            epochs=self.epochs,verbose=0,
                             callbacks = [shrink.L1_update(model.trainable_weights[:1],
                                 lr=self.lr,regularizer=self.alpha)])
-        learned_coef= model.get_weights()[0]
+        self.fitted_coef= model.get_weights()[0]
         # the learned intercept is the last element in the learned_coef array
-        true_coef,true_intercept = recover(learned_coef,processed_data)
+        true_coef,true_intercept = recover(self.fitted_coef,processed_data)
         self.coef = true_coef
         self.intercept = true_intercept
         return self.coef,self.intercept,self.alpha
@@ -85,13 +95,14 @@ class sk_LassoCV(regression):
     def __init__(self,**kwargs):
         super().__init__(**kwargs)
 
-    def fit(self,data):
-        new_X,new_y,X_scale,y_scale = u.preprocess_data(data)
+    def fit(self,processed_data):
+        X = u.read_h5(processed_data.X)
+        y = u.read_chisq_from_ss(processed_data.y,processed_data.active_ind)
         from sklearn.linear_model import LassoCV
         model = LassoCV(fit_intercept=False)
-        model.fit(new_X,new_y)
-        learned_coef = model.coef_
-        true_coef,true_intercept = recover(data,learned_coef,X_scale,y_scale)
+        model.fit(X,y)
+        learned_coef = model.coef_[:,None]
+        true_coef,true_intercept = recover(learned_coef,processed_data)
         self.coef = true_coef
         self.intercept = true_intercept
         self.alpha = model.alpha_
@@ -134,64 +145,43 @@ def recover(learned_coef,processed_data):
     true_intercept = processed_data.y_offset - processed_data.X_offset.dot(Ntrue_coef)
     return true_coef,true_intercept
 
-#def generator(data,n):
-#    """
-#    Generates mini-bathces of data
-#    data object should be processed already. Processed data.y only has one column
-#    n = mini batch size
-#    """
-#    pdb.set_trace()
-#    X = u.read_h5(data.X)
-#    y = np.array(pd.read_csv(data.y,delim_whitespace=True).iloc[:,0])
-#    b = data.active_len//n # number of complete batches from one iteration
-#    while True:
-#        i=1
-#        while i <= b:
-#            batch_X = X[n*(i-1):n*i,:]
-#            batch_y = y[n*(i-1):n*i]
-#            i+=1
-#            yield batch_X,batch_y
-#        # the last batch consist of what's remaining in the data and the head of data
-#        remaining_X = X[n*(i-1):,:]
-#        need_from_head = n - remaining_X.shape[0]
-#        batch_X = np.concatenate((remaining_X,X[:need_from_head,:]),axis=0)
-#        remaining_y = y[n*(i-1):]
-#        batch_y = np.concatenate((remaining_y,y[:need_from_head]),axis=0)
-#        yield batch_X,batch_y
-
 def generator(data,n):
     X = u.read_h5(data.X)
     y = np.array(pd.read_csv(data.y,delim_whitespace=True).iloc[:,0])
     while True:
-        pdb.set_trace()
-        j = 1 # which interval of active_ind we are on
-        while j <= len(data.active_ind):
-            #TODO this doesn't work when active_ind has multiple intervals
-            i = 1 # batch number
-            start = data.active_ind[j-1][0]
-            end = data.active_ind[j-1][1]
-            b = (end - start)//n
-            while i<=b:
-                batch_X = X[n*(i-1)+start:n*i+start,:]
-                batch_y = y[n*(i-1)+start:n*i+start]
-                i+=1
-                yield batch_X,batch_y
-            pdb.set_trace()
-            j += 1
-             
-            remaining_X = X[n*(i-1)+start:end,:]
-            need_from_next = n - remaining_X.shape[0]
-            batch_X = np.concatenate((remaining_X,X[start:need_from_head+start,:]),axis=0)
-            remaining_y = y[n*(i-1)+start:end]
-            batch_y = np.concatenate((remaining_y,y[start:need_from_head+start]),axis=0)
-            j+=1
+        for batch_ind in batch_gen(data.active_ind,n):
+            ends = u.get_endpoints(batch_ind)
+            batch_X = u.get_active(X,ends)
+            batch_y = u.get_active(y,ends)
             yield batch_X,batch_y
 
-def generator(data,n):
-    X = u.read_h5(data.X)
-    y = np.array(pd.read_csv(data.y,delim_whitespace=True).iloc[:,0])
+def batch_gen(intervals, batch_size):
+    """Generates batches from indices_gen(intervals) of size batch_size
+    """
+    batch = []
+    for i in indices_gen(intervals):
+        batch.append(i)
+
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+
+def indices_gen(intervals):
+    """Generates all indices that are within any of the intervals
+
+    Inputs:
+        intervals:  assumed to be of the form [[min1, max1], [min2, max2], ...]
+                    where min1 < max1 < min2 < max2 < ...
+
+    Outputs:
+        a generator which generates all indices within any of the intervals,
+        and goes on forever (repeating)
+    """
     while True:
-        
+        for interval in intervals:
+            [start, end] = interval
+            for i in range(start, end):
+                yield i
 
 def compute_cvlosses(candidate_params,dd,od,kf,reg_method):
     """
@@ -210,13 +200,14 @@ def compute_cvlosses(candidate_params,dd,od,kf,reg_method):
             vi = u.get_endpoints(val_ind)
             tr_obj = copy.copy(dd)
             tr_obj.active_ind = ti
+            # validation data with respect to the original data
             val_obj = copy.copy(od)
             val_obj.active_ind = u.get_endpoints(u.convert_to_original_ind(od.active_ind,u.expand_ind(vi)))
             if reg_method == 'Lasso':
                 cv_lasso = regr.Lasso(alpha = p)
                 cv_lasso.epochs = cv_lasso.CV_epochs
                 cv_lasso.fit(tr_obj,od)
-                cv_lasso.evaluate(val_obj)
+                cv_lasso.evaluate_no_weight(val_obj)
                 cv_loss += cv_lasso.cv_loss
         losses.append(cv_loss)
     return losses

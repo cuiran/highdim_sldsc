@@ -8,10 +8,11 @@ def perform_regression(args,data,**kwargs):
         regr.OLS()
     elif reg_method == 'Lasso':
         lasso = regr.Lasso(**kwargs)
-        if not d.check_processed(data):
-            processed_data = d.preprocess_large(data)
-        else:
-            processed_data = d.read_processed(data)
+        #if not d.check_processed(data):
+        #    processed_data = d.preprocess_large(data)
+        #else:
+        #    processed_data = d.read_processed(data)
+        processed_data = d.preprocess_large(data)
         lasso.fit(processed_data,data)
         reg_obj = lasso
     elif reg_method == 'ElasticNet':
@@ -20,8 +21,14 @@ def perform_regression(args,data,**kwargs):
         regr.LassoOLS()
     elif reg_method == 'skLassoCV':
         print('Performing sklearn LassoCV fit...')
+        if not d.check_processed(data):
+            print('Preprocessing data...')
+            processed_data = d.preprocess_large(data)
+        else:
+            print('Processed data exists')
+            processed_data = d.read_processed(data)
         reg_obj = regr.sk_LassoCV(*kwargs)
-        reg_obj.fit(data)
+        reg_obj.fit(processed_data)
     elif reg_method == 'skOLS':
         if args.fit == 'direct':
             print('Performing sklearn OLS direct fit...')
