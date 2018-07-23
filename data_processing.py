@@ -23,7 +23,6 @@ class data:
         std_X is the standard deviation taken over rows of active X
         mean_y is the mean taken over active elements in CHISQ column of y
         std_y is the standard deviation taken over active elements in CHISQ column of y
-        weighted_meanX is the mean taken over active rows of weighted X 
         ...
         N is the number of individuals
         """
@@ -36,13 +35,8 @@ class data:
         self._std_X = None
         self._mean_y = None
         self._std_y = None
-        self._weighted_meanX = None
-        self._weighted_stdX = None
-        self._weighted_meany = None 
-        self._weighted_stdy = None 
         self._N = None
         self._num_features = None
-        self._sum_active_weights = None
         self._X_strips = None
         self._Xstripsize = None
         self.X_offset = None
@@ -114,38 +108,10 @@ class data:
         return self._std_y
  
     @property
-    def sum_active_weights(self):
-        active_weights = u.get_active_weights(self.weights,self.active_ind)
-        self._sum_active_weights = np.sum(active_weights)
-        return self._sum_active_weights
-    
-    @property
     def X_strips(self):
         # stripping X by column, return a list of lists of endpoints
         self._X_strips = u.make_strips(self,stripsize=self.Xstripsize)
         return self._X_strips
-
-    @property
-    def weighted_meanX(self):
-        # weighted average of columns of  active X: (\sum w_ix_i)/(\sum w_i)
-        w_mean = []
-        w = u.get_active_weights(self.weights,self.active_ind)
-        for strip in self.X_strips:
-            X = u.read_h5(self.X)
-            X_strip = u.get_strip_active_X(X,strip,self.active_ind)
-            w_mean_strip = np.average(X_strip,weights=w,axis=0)
-            w_mean.append(w_mean_strip)
-        w_mean = np.array(w_mean)
-        self._weighted_meanX = w_mean.flatten()
-        return self._weighted_meanX
-        
-    @property
-    def weighted_meany(self):
-        if not self._weighted_meany: 
-            active_w = u.get_active_weights(self.weights,self.active_ind)
-            active_y = u.read_chisq_from_ss(self.y,self.active_ind)
-            self._weighted_meany = np.average(active_y,weights=active_w)
-        return self._weighted_meany
 
     @property
     def N(self):
@@ -220,6 +186,16 @@ def weights_processing(args,original_data):
     df.to_csv(weights_fname,sep='\t',index=False)
     return weights_fname
 
+def init_new_data(old_data):
+    new_data = copy.copy(old_data)
+    new_data.X = old_data.X+'_processed.h5'
+    new_data.y = old_data.y+'_processed.txt'
+    new_data.weights = old_data.weights+'_processed.txt'
+    new_data.active_ind = [[0,old_data.active_len]]
+    new_data.X_offset = old_data.mean_X
+    new_data.X_scale = []
+    return new_data
+
 def preprocess_large(dd): 
     # data object with original X, y and weights info
     # center, weight, scale X, and y and store the result in a new data object
@@ -227,20 +203,13 @@ def preprocess_large(dd):
     X = u.read_h5(dd.X)
     w = u.get_active_weights(dd.weights,dd.active_ind)
     sqrt_w = np.sqrt(np.array(w))
-    new_data = copy.copy(dd)
-    pdb.set_trace()
-    new_data.X = dd.X+'_processed.h5'
-    new_data.y = dd.y+'_processed.txt'
-    new_data.weights = dd.weights+'_processed.txt'
-    new_data.active_ind = [[0,dd.active_len]]
-    new_data.X_offset = dd.mean_X
-    new_data.X_scale = []
+    new_data = init_new_data(dd)
     # center weight scale X
     first_strip = dd.X_strips[0]
     X_active_strip = u.get_strip_active_X(X,first_strip,dd.active_ind)
     if X_active_strip.ndim == 1:
         X_active_strip = X_active_strip[:,None]
-    centered_strip = X_active_strip - dd.mean_X[first_strip[0]:first_strip[1]]
+    centered_strip = X_active_strip - new_data.X_offset[first_strip[0]:first_strip[1]]
     weighted_strip = sqrt_w[:,None]*centered_strip
     X_strip_scale = np.std(weighted_strip,axis=0)
     new_data.X_scale.append(X_strip_scale)
@@ -255,8 +224,8 @@ def preprocess_large(dd):
         new_data.X_scale.append(X_strip_scale)
         new_X_strip = weighted_strip/X_strip_scale
         append_to_h5(new_data.X,new_X_strip)
-    #shuffle and save X
     f.close()
+    #shuffle and save X
     new_X = h5py.File(new_data.X,'r+')['dataset']
     rng_state = np.random.get_state()
     np.random.shuffle(new_X)

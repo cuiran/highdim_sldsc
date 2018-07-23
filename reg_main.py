@@ -27,7 +27,7 @@ def perform_regression(args,data,**kwargs):
         else:
             print('Processed data exists')
             processed_data = d.read_processed(data)
-        reg_obj = regr.sk_LassoCV(*kwargs)
+        reg_obj = regr.sk_LassoCV()
         reg_obj.fit(processed_data)
     elif reg_method == 'skOLS':
         if args.fit == 'direct':
