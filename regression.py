@@ -15,7 +15,7 @@ import shrink
 import copy
 
 class regression:
-    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=50):
+    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=300):
         self.fit_intercept = fit_intercept
         self.normalize = True # always normalize
         self.lr = lr
@@ -28,7 +28,7 @@ class regression:
         # used self.coef and self.intercept to compute predicted sumstats on data
         # formula for chisq is N*annot_ld*self.coef + self.intercept
         # compute the weighted sum of squared loss on data
-        #TODO there's something wrong with this function
+        #TODO there's something wrong with this function, most likely it's shuffling related, or maybe it's comparing processed y with predicted original y
         d = u.read_h5(original_data.X)
         val_annotld = u.get_active(d,original_data.active_ind) # output one ndarray represent validation matrix
         val_chisq = u.read_chisq_from_ss(original_data.y,original_data.active_ind)[:,None]# ndarray of validation chisq stats
@@ -55,7 +55,7 @@ class regression:
          
 
 class Lasso(regression):
-    def __init__(self,alpha='CV',CV_folds=3,CV_epochs=30,**kwargs):
+    def __init__(self,alpha='CV',CV_folds=10,CV_epochs=30,**kwargs):
         super().__init__(**kwargs)
         self.alpha=alpha
         self.CV_folds=CV_folds
@@ -64,9 +64,18 @@ class Lasso(regression):
     def choose_param(self,processed_data,original_data):
         # call this method if alpha is set to be 'CV'
         kf = KFold(n_splits = self.CV_folds)
-        candidate_params = get_candidate_params(processed_data) 
+        candidate_params = get_candidate_params(processed_data)
         cv_losses = compute_cvlosses(candidate_params,processed_data,original_data,kf,'Lasso')
-        best_alpha = candidate_params[np.argmin(cv_losses)]
+        best_ind = np.argmin(cv_losses)
+        best_alpha = candidate_params[best_ind]
+        count = 0
+        while count < 5 and best_ind ==9: # best is not the last/smallest
+                max_param = candidate_params[best_ind]
+                candidate_params = np.array([max_param*(2**-i) for i in range(1,11)])
+                cv_losses = compute_cvlosses(candidate_params,processed_data,original_data,kf,'Lasso')
+                best_ind = np.argmin(cv_losses)
+                best_alpha = candidate_params[best_ind]
+                count+=1              
         # TODO: if the mininum loss occurs at the smallest param, try smaller candidate params
         return best_alpha
 
@@ -81,7 +90,7 @@ class Lasso(regression):
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(processed_data,self.minibatch_size),
                             steps_per_epoch=processed_data.active_len//self.minibatch_size,
-                            epochs=self.epochs,verbose=0,
+                            epochs=self.epochs,verbose=1,
                             callbacks = [shrink.L1_update(model.trainable_weights[:1],
                                 lr=self.lr,regularizer=self.alpha)])
         self.fitted_coef= model.get_weights()[0]
@@ -201,7 +210,7 @@ def compute_cvlosses(candidate_params,dd,od,kf,reg_method):
             tr_obj = copy.copy(dd)
             tr_obj.active_ind = ti
             # validation data with respect to the original data
-            val_obj = copy.copy(od)
+            val_obj = copy.copy(dd) 
             val_obj.active_ind = u.get_endpoints(u.convert_to_original_ind(od.active_ind,u.expand_ind(vi)))
             if reg_method == 'Lasso':
                 cv_lasso = regr.Lasso(alpha = p)
@@ -218,7 +227,7 @@ def get_candidate_params(dd):
     # (1/N) * max_j|<new_X_j,new_y>|
     # this formula is from Regularization Paths for Generalized Linear Models via Coordinate Descent by Friedman et. al.
     ydotX = compute_ydotX(dd)
-    max_param = np.max(np.divide(np.abs(ydotX),dd.N))
+    max_param = np.max(np.divide(np.abs(ydotX),dd.active_len)) #TODO check this line, is this the right formula and is dd.N the N in the formula?
     candidates = np.array([max_param*(2**-i) for i in range(1,11)])
     return candidates
 
