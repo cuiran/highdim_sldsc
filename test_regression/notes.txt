@@ -1,0 +1,11 @@
+I ran 5 simulations to test if my regression process generates similar approximations for beta to sklearn fitted coefficients. 
+
+The files with prefix "diffalpha" are generated from using my own cross validation method to select regularization parameter alpha, then fit the data using selected alpha. The alpha selected from this process are (almost always) different from the ones selected by sklearn.linear_model.LassoCV.
+
+The files with prefix "samealpha" are generated from using the alpha selected by sklearn.linear_model.LassoCV to fit the data. 
+
+*klassocoef stores the fitted coefficients using my scripts
+*sklassocoef stores the fitted coefficients using sklearn.linear_model.LassoCV
+*alpha_wsse stores the alpha used for each simulation (may or may not be different for keras and sklearn), and the weighted sum of squared error on training data for the keras lasso coefficients.
+
+From observing these 5 simulations, even though diffalpha used different regularization parameters in the two fitting processes, the fitted coefficients are actually more similar than the fitting with same alpha. This seems to indicate that my CV process works well in terms of accurately estimating betas.

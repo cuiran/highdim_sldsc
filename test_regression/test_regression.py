@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import pdb
+import sys
+sys.path.append('/home/rancui/regularized_sldsc/pyscripts_new/')
 import regression as r
 from sklearn import linear_model
 from sklearn import preprocessing
@@ -25,7 +27,7 @@ def fit():
     data_obj,X,y = gen_data()
     sklasso = linear_model.LassoCV()
     sklasso.fit(X,y)
-    klasso = r.Lasso()
+    klasso = r.Lasso(alpha=sklasso.alpha_)
     klasso.fit(data_obj,data_obj)
     return klasso,sklasso,data_obj
 
@@ -79,9 +81,9 @@ if __name__ == '__main__':
     df['klasso_alpha'] = klasso_alpha
     df['sklasso_alpha'] = sklasso_alpha
     df['klasso_wsse'] = klasso_wsse
-    df.to_csv('test_alpha_wsse.csv',sep='\t',index=False)
+    df.to_csv('samealpha_test_alpha_wsse.csv',sep='\t',index=False)
     coef_df = pd.DataFrame(data=klasso_coef,columns=[x for x in range(1,len(klasso_coef[0])+1)])
-    coef_df.to_csv('test_klassocoef_sim.csv',sep='\t',index=False)
+    coef_df.to_csv('samealpha_test_klassocoef_sim.csv',sep='\t',index=False)
     coef_df = pd.DataFrame(data=sklasso_coef,columns=[x for x in range(1,len(sklasso_coef[0])+1)])
-    coef_df.to_csv('test_sklassocoef_sim.csv',sep='\t',index=False)
+    coef_df.to_csv('samealpha_test_sklassocoef_sim.csv',sep='\t',index=False)
     
