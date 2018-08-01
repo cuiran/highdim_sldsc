@@ -1,5 +1,0 @@
-1. Change the normalizing steps in Lasso fit from w*X standardize into first centering X and y with weighted means,
-    then scale X with L2 norm of centered X
-2. Recovering of the coefficients and intercept needs to be changed.
-    true coef is simply learned coef divided by X_scale then divide by data.N
-    true intercept is weighted mean y minus weighted mean X dot product with true coef times N

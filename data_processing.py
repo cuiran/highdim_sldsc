@@ -1,11 +1,12 @@
 import h5py
 import pdb
 import useful_functions as u
-from memory_profiler import profile
+#from memory_profiler import profile
 from os import path
 import copy
 import pandas as pd
 import numpy as np
+import line_profiler
 
 class data:
     def __init__(self,X,y,weights,active_ind):
@@ -195,7 +196,7 @@ def init_new_data(old_data):
     new_data.X_offset = old_data.mean_X
     new_data.X_scale = []
     return new_data
-
+@profile
 def preprocess_large(dd): 
     # data object with original X, y and weights info
     # center, weight, scale X, and y and store the result in a new data object
@@ -228,6 +229,7 @@ def preprocess_large(dd):
     #shuffle and save X
     new_X = h5py.File(new_data.X,'r+')['dataset']
     rng_state = np.random.get_state()
+    pdb.set_trace()
     np.random.shuffle(new_X)
     with h5py.File(new_data.X,'r+') as f:
         f['dataset'][:] = new_X

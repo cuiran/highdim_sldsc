@@ -1,6 +1,0 @@
-************
-6/14/2018
-************
- -- Compared skOLS fit with ldsc.py results. For medium_one_annot data, the results are the same. However, ldsc.py only used the last 1500 data points out of 2000 for some reason.
- -- Compared my final_weights with ldsc.py new_w which is the estimation of reciprocal of conditional variance function.
- -- Learned how the ldsc.py used the weights and dealt with the intercept. First add an all-one column to x, then multiply both x and y with w/sum(w), where w is the square root of the estimated reciprocal of CVF.

@@ -13,9 +13,10 @@ import useful_functions as u
 import pdb
 import shrink
 import copy
+import line_profiler
 
 class regression:
-    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=30,epochs=300):
+    def __init__(self,fit_intercept=True,lr=0.01,decay=0.,momentum=0.,minibatch_size=1000,epochs=100):
         self.fit_intercept = fit_intercept
         self.normalize = True # always normalize
         self.lr = lr
@@ -55,7 +56,7 @@ class regression:
          
 
 class Lasso(regression):
-    def __init__(self,alpha='CV',CV_folds=10,CV_epochs=30,**kwargs):
+    def __init__(self,alpha='CV',CV_folds=5,CV_epochs=30,**kwargs):
         super().__init__(**kwargs)
         self.alpha=alpha
         self.CV_folds=CV_folds
@@ -69,17 +70,18 @@ class Lasso(regression):
         best_ind = np.argmin(cv_losses)
         best_alpha = candidate_params[best_ind]
         count = 0
-        while count < 5 and best_ind ==9: # best is not the last/smallest
+        while count < 5 and best_ind ==4: # best is not the last/smallest
                 max_param = candidate_params[best_ind]
-                candidate_params = np.array([max_param*(2**-i) for i in range(1,11)])
+                candidate_params = np.array([max_param*(2**-i) for i in range(1,6)])
                 cv_losses = compute_cvlosses(candidate_params,processed_data,original_data,kf,'Lasso')
                 best_ind = np.argmin(cv_losses)
                 best_alpha = candidate_params[best_ind]
                 count+=1              
         # TODO: if the mininum loss occurs at the smallest param, try smaller candidate params
         return best_alpha
-
+    @profile
     def fit(self,processed_data,original_data):
+
         #  weight and scale the data before fitting model
         if self.alpha == 'CV':
             self.alpha = self.choose_param(processed_data,original_data)
@@ -90,9 +92,10 @@ class Lasso(regression):
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(processed_data,self.minibatch_size),
                             steps_per_epoch=processed_data.active_len//self.minibatch_size,
-                            epochs=self.epochs,verbose=1,
+                            epochs=self.epochs,verbose=0,
                             callbacks = [shrink.L1_update(model.trainable_weights[:1],
                                 lr=self.lr,regularizer=self.alpha)])
+        
         self.fitted_coef= model.get_weights()[0]
         # the learned intercept is the last element in the learned_coef array
         true_coef,true_intercept = recover(self.fitted_coef,processed_data)
@@ -153,6 +156,12 @@ def recover(learned_coef,processed_data):
     true_coef = Ntrue_coef/processed_data.N
     true_intercept = processed_data.y_offset - processed_data.X_offset.dot(Ntrue_coef)
     return true_coef,true_intercept
+
+def dummy_gen(data,n):
+    while True:
+        X = np.ones((30,6))
+        y = np.ones((30,))
+        yield X,y
 
 def generator(data,n):
     X = u.read_h5(data.X)
@@ -228,7 +237,7 @@ def get_candidate_params(dd):
     # this formula is from Regularization Paths for Generalized Linear Models via Coordinate Descent by Friedman et. al.
     ydotX = compute_ydotX(dd)
     max_param = np.max(np.divide(np.abs(ydotX),dd.active_len)) #TODO check this line, is this the right formula and is dd.N the N in the formula?
-    candidates = np.array([max_param*(2**-i) for i in range(1,11)])
+    candidates = np.array([max_param*(2**-i) for i in range(1,6)])
     return candidates
 
 def compute_ydotX(dd):

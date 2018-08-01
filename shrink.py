@@ -1,6 +1,7 @@
 import keras.backend as K
 from keras.callbacks import Callback
 import pdb
+import line_profiler
 
 def shrink_weights_fn_creator(weight_list, alpha=0.01):
     # build updates
@@ -16,12 +17,11 @@ def shrink_weights_fn_creator(weight_list, alpha=0.01):
     # updates.
     return K.function([], [L1_metric], updates=updates)
 
-
 class L1_update(Callback):
     def __init__(self, weights_to_shrink, lr, regularizer):
         self.shrink_weights_fn = shrink_weights_fn_creator(weights_to_shrink,alpha=lr*regularizer)
         self.weights = weights_to_shrink
-
-    def on_batch_end(self,batch, logs={}):
+    
+def on_batch_end(self,batch, logs={}):
         l1 = self.shrink_weights_fn([])
 #        print("L1", l1[0])
