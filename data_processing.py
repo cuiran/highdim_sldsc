@@ -84,8 +84,8 @@ class data:
                 std.append(std_strip)
             mean = np.array(mean)
             std = np.array(std)
-            self._mean_X = mean.flatten()
-            self._std_X = std.flatten()
+            self._mean_X = np.concatenate(mean)
+            self._std_X = np.concatenate(std)
         return self._mean_X
 
     @property
@@ -180,9 +180,11 @@ def compute_final_w(args,data):
     return final_weights
 
 def weights_processing(args,original_data):
+    print('processing weights')
     final_weights = compute_final_w(args,original_data)
     weights_inv = 1/final_weights
     df = pd.DataFrame(data=weights_inv,columns=['WEIGHT'])
+    print('saving weights to '+ args.output_folder)
     weights_fname = args.output_folder+'final_weights.txt'
     df.to_csv(weights_fname,sep='\t',index=False)
     return weights_fname
@@ -196,8 +198,16 @@ def init_new_data(old_data):
     new_data.X_offset = old_data.mean_X
     new_data.X_scale = []
     return new_data
-@profile
-def preprocess_large(dd): 
+
+def preprocess_large_no_wsh(dd):
+    print('processing data no weight no shuffling')
+    # first argument is a data object with original X, y and weights info
+    # center scale X and y (no weighting or shuffling) 
+    X = u.read_h5(dd.X)
+    new_data = init_new_data(dd)
+
+def preprocess_large(dd,snplist):
+    print('processing data') 
     # data object with original X, y and weights info
     # center, weight, scale X, and y and store the result in a new data object
     # store X_offset, y_offset, X_scale, and y_scale too
@@ -210,6 +220,7 @@ def preprocess_large(dd):
     X_active_strip = u.get_strip_active_X(X,first_strip,dd.active_ind)
     if X_active_strip.ndim == 1:
         X_active_strip = X_active_strip[:,None]
+    print('centering weighting scaling X')
     centered_strip = X_active_strip - new_data.X_offset[first_strip[0]:first_strip[1]]
     weighted_strip = sqrt_w[:,None]*centered_strip
     X_strip_scale = np.std(weighted_strip,axis=0)
@@ -228,14 +239,23 @@ def preprocess_large(dd):
     f.close()
     #shuffle and save X
     new_X = h5py.File(new_data.X,'r+')['dataset']
+    print('shuffling X')
     rng_state = np.random.get_state()
-    pdb.set_trace()
+    # shuffle and save snplist
+    snps = np.array(pd.read_csv(snplist,delim_whitespace=True).iloc[:,:])
+    np.random.shuffle(snps)
+    shuffled_snps = pd.DataFrame(data=snps,columns=['CHR','SNP'])
+    shuffled_snps.to_csv(snplist+'_shuffled',sep='\t',index=False)
+    np.random.set_state(rng_state)
     np.random.shuffle(new_X)
+    print('saving shuffled X to '+new_data.X)
     with h5py.File(new_data.X,'r+') as f:
         f['dataset'][:] = new_X
     f.close()
-    new_data.X_scale = np.array(new_data.X_scale).flatten()
+    
+    new_data.X_scale = np.concatenate(new_data.X_scale)
     # center weight scale y
+    print('processing y')
     y = u.read_chisq_from_ss(dd.y,dd.active_ind)
     new_data.y_offset = dd.mean_y
     centered_y = y - new_data.y_offset
@@ -248,6 +268,7 @@ def preprocess_large(dd):
     new_y_df = pd.DataFrame(data=new_y,columns = ['CHISQ'])
     new_y_df.to_csv(new_data.y,sep='\t',index=False)
     # save X_offset y_offset, X_scale, y_scale to file
+    print('writing processed data to file')
     Xoff_df = pd.DataFrame(data=new_data.X_offset,columns=['X_offset'])
     Xoff_df.to_csv(dd.X+'_offset.txt',sep='\t',index=False)
     Xscale_df = pd.DataFrame(data=new_data.X_scale,columns=['X_scale'])

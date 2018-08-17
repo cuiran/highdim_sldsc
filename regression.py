@@ -66,6 +66,7 @@ class Lasso(regression):
         # call this method if alpha is set to be 'CV'
         kf = KFold(n_splits = self.CV_folds)
         candidate_params = get_candidate_params(processed_data)
+        print('candidate parameters',candidate_params)
         cv_losses = compute_cvlosses(candidate_params,processed_data,original_data,kf,'Lasso')
         best_ind = np.argmin(cv_losses)
         best_alpha = candidate_params[best_ind]
@@ -79,20 +80,22 @@ class Lasso(regression):
                 count+=1              
         # TODO: if the mininum loss occurs at the smallest param, try smaller candidate params
         return best_alpha
-    @profile
+    
     def fit(self,processed_data,original_data):
 
         #  weight and scale the data before fitting model
         if self.alpha == 'CV':
+            print('performing cross validation to choose regularization parameter')
             self.alpha = self.choose_param(processed_data,original_data)
             print('choosen alpha',self.alpha)
+        print('performing regression')
         model = Sequential()
         model.add(Dense(1,input_dim=processed_data.num_features,use_bias=False))
         sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(processed_data,self.minibatch_size),
                             steps_per_epoch=processed_data.active_len//self.minibatch_size,
-                            epochs=self.epochs,verbose=0,
+                            epochs=self.epochs,verbose=1,
                             callbacks = [shrink.L1_update(model.trainable_weights[:1],
                                 lr=self.lr,regularizer=self.alpha)])
         
