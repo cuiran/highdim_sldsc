@@ -8,12 +8,13 @@ def perform_regression(args,data,**kwargs):
         regr.OLS()
     elif reg_method == 'Lasso':
         lasso = regr.Lasso(**kwargs)
-        if not d.check_processed(data):
-            processed_data = d.preprocess_large(data,args.annot_snplist)
-        else:
-            print('data already processed')
-            processed_data = d.read_processed(data)
+        #if not d.check_processed(data):
+        #    processed_data = d.preprocess_large(data,args.annot_snplist)
+        #else:
+        #    print('data already processed')
+        #    processed_data = d.read_processed(data)
         #processed_data = d.preprocess_large(data,args.annot_snplist)
+        processed_data = d.preprocess_large_no_wsh(data)
         lasso.fit(processed_data,data)
         reg_obj = lasso
     elif reg_method == 'ElasticNet':

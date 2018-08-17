@@ -90,13 +90,13 @@ class data:
 
     @property
     def std_X(self):
-        if not self._std_X:
+        if self._std_X is None:
             self.mean_X(self)
         return self._std_X
 
     @property
     def mean_y(self):
-        if not self._mean_y:
+        if self._mean_y is None:
             y = u.read_chisq_from_ss(self.y,self.active_ind)
             self._mean_y = np.mean(y)
             self._std_y = np.std(y)
@@ -104,7 +104,7 @@ class data:
 
     @property
     def std_y(self):
-        if not self._std_y:
+        if self._std_y is None:
             self.mean_y(self)
         return self._std_y
  
@@ -116,7 +116,7 @@ class data:
 
     @property
     def N(self):
-        if not self._N:
+        if self._N is None:
             ss_df = pd.read_csv(self.y,delim_whitespace=True)
             self._N = np.mean(ss_df['N'])
         return self._N
@@ -199,12 +199,60 @@ def init_new_data(old_data):
     new_data.X_scale = []
     return new_data
 
+def init_newd_no_wsh(old_data):
+    # initiate new data object with names for unweighted and unshuffled processed data
+    new_data = copy.copy(old_data)
+    new_data.X = old_data.X+'processed_no_wsh.h5'
+    new_data.y = old_data.y+'processed_no_wsh.txt'
+    new_data.weights = old_data.weights+'_processed_no_wsh.txt'
+    new_data.active_ind = [[0,old_data.active_len]]
+    new_data.X_offset = old_data.mean_X
+    new_data.X_scale = old_data.std_X
+    new_data.y_offset = old_data.mean_y
+    new_data.y_scale = old_data.std_y
+    return new_data
+
 def preprocess_large_no_wsh(dd):
     print('processing data no weight no shuffling')
     # first argument is a data object with original X, y and weights info
     # center scale X and y (no weighting or shuffling) 
     X = u.read_h5(dd.X)
-    new_data = init_new_data(dd)
+    new_data = init_newd_no_wsh(dd)
+    # center scale X
+    first_strip = dd.X_strips[0]
+    X_active_strip = u.get_strip_active_X(X,first_strip,dd.active_ind)
+    if X_active_strip.ndim == 1:
+        X_active_strip = X_active_strip[:,None]
+    print('centering and scaling X')
+    centered_strip = X_active_strip - new_data.X_offset[first_strip[0]:first_strip[1]]
+    new_X_strip = centered_strip/new_data.X_scale[first_strip[0]:first_strip[1]]
+    # write first strip of new X to file
+    with h5py.File(new_data.X,'w') as f:
+        f.create_dataset('dataset',maxshape=(dd.active_len,X.shape[1]),data=new_X_strip)
+    for strip in dd.X_strips[1:]:
+        X_active_strip = u.get_strip_active_X(X,strip,dd.active_ind)
+        centered_strip = X_active_strip - new_data.X_offset[strip[0]:strip[1]]
+        new_X_strip = centered_strip/new_data.X_scale[strip[0]:strip[1]]
+        append_to_h5(new_data.X,new_X_strip)
+    #f.close()
+    print('centering and scaling y') 
+    y = u.read_chisq_from_ss(dd.y,dd.active_ind)
+    centered_y = y - new_data.y_offset
+    new_y = centered_y/new_data.y_scale
+    new_y_df = pd.DataFrame(data=new_y,columns = ['CHISQ'])
+    new_y_df.to_csv(new_data.y,sep='\t',index=False)
+    # save X_offset y_offset, X_scale, y_scale to file
+    print('writing processed data to file')
+    Xoff_df = pd.DataFrame(data=new_data.X_offset,columns=['X_offset'])
+    Xoff_df.to_csv(dd.X+'_offset.txt',sep='\t',index=False)
+    Xscale_df = pd.DataFrame(data=new_data.X_scale,columns=['X_scale'])
+    Xscale_df.to_csv(dd.X+'_scale.txt',sep='\t',index=False)
+    yoff_df = pd.DataFrame(data=[new_data.y_offset],columns=['y_offset'])
+    yoff_df.to_csv(dd.y+'_offset.txt',sep='\t',index=False)
+    yscale_df = pd.DataFrame(data=[new_data.y_scale],columns=['y_scale'])
+    yscale_df.to_csv(dd.y+'_scale.txt',sep='\t',index=False)
+    return new_data
+
 
 def preprocess_large(dd,snplist):
     print('processing data') 
@@ -292,7 +340,7 @@ def append_to_h5(file_name,array):
         d = hf['dataset']
         d.resize(d.shape[1]+c, axis=1)
         d[:,-c:] = array
-    hf.close()
+    #hf.close()
     return
 
 def check_processed(data):

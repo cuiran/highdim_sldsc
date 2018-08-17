@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pdb
 import sys
-sys.path.append('/home/rancui/regularized_sldsc/pyscripts_new/')
+sys.path.append('/Users/rancui/Desktop/highdim_sldsc/')
 import regression as r
 from sklearn import linear_model
 from sklearn import preprocessing
@@ -37,16 +37,16 @@ def save_make_obj(X,y,noise_cov):
     w_df.to_csv(dd.weights,sep='\t',index=False)
     dd._N = 1.0
     return dd
-@profile
+
 def fit():
     print('generating data')
     data_obj,X,y = gen_data()
     sklasso = linear_model.LassoCV()
     print('performing sklearn LassoCV fit')
     sklasso.fit(X,y)
-    klasso = r.Lasso(alpha=sklasso.alpha_)
+    klasso = r.Lasso()
     print('processing data')
-    processed_data = d.preprocess_large(data_obj)
+    processed_data = d.preprocess_large_no_wsh(data_obj)
     print('performing keras lasso fit')
     klasso.fit(processed_data,data_obj)
     return klasso,sklasso,data_obj
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     df['klasso_alpha'] = klasso_alpha
     df['sklasso_alpha'] = sklasso_alpha
     df['klasso_wsse'] = klasso_wsse
-    prefix = 'N1M_samealpha_'
+    prefix = 'N1M_diffalpha_no_wsh_'
     df.to_csv(prefix+'alpha_wsse.csv',sep='\t',index=False)
     coef_df = pd.DataFrame(data=klasso_coef,columns=[x for x in range(1,len(klasso_coef[0])+1)])
     coef_df.to_csv(prefix+'klassocoef_sim.csv',sep='\t',index=False)
