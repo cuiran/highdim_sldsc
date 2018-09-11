@@ -210,6 +210,7 @@ def init_newd_no_wsh(old_data):
     new_data.X_scale = old_data.std_X
     new_data.y_offset = old_data.mean_y
     new_data.y_scale = old_data.std_y
+    new_data._N = old_data.N
     return new_data
 
 def preprocess_large_no_wsh(dd):
@@ -357,3 +358,10 @@ def read_processed(d):
     dd.y_scale = np.array(pd.read_csv(d.y+'_scale.txt',delim_whitespace=True).iloc[0,0])
     dd._N = d.N
     return dd
+
+def est_lr(d):
+    # estimate the magnitude of learning rate by assessing the approx magnitute of tau given by 
+    # N/M*a where N is the number of samples M is the number of SNPs and a is the number of annots
+    approx_tau = d.N/(d.active_len * d.num_features)
+    approx_lr = 10**np.round(np.log10(approx_tau/5))
+    return approx_lr

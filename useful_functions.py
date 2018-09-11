@@ -63,6 +63,23 @@ def get_active(array, list_list_ind):
     big_chunck = np.concatenate(chuncks)
     return big_chunck
 
+def get_active_X(X, active_ind):
+    # array is a 2 dimensional 
+    if len(active_ind)==1:
+        active_array = X[active_ind[0][0]:active_ind[0][1],:]
+    else:
+        list_active_array = [X[active[0]:active[1],:] for active in active_ind]
+        active_array = np.concatenate(list_active_array)
+    return active_array
+
+def get_active_y(y,active_ind):
+    if len(active_ind)==1:
+        active_array = y[active_ind[0][0]:active_ind[0][1]]
+    else:
+        list_active_array = [y[active[0]:active[1]] for active in active_ind]
+        active_array = np.concatenate(list_active_array)
+    return active_array
+
 def read_chisq_from_ss(ss_file, active_ind):
     # output active chisq as an ndarray
     ss_df = pd.read_csv(ss_file, delim_whitespace=True)

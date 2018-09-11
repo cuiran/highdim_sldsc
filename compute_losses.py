@@ -3,19 +3,24 @@ import numpy as np
 import h5py
 import pdb
 import argparse
+import sklearn_cheat_hm3snps as reg
 
 def ssloss(args):
-    if args.baselineLD:
-        X = h5py.File(args.X,'r')['dataset'][420505:,-75:]
-    else:
-        X = h5py.File(args.X,'r')['dataset'][420505:,:]
-    y = np.array(pd.read_csv(args.y,delim_whitespace=True)['CHISQ'])[420505:]
-    w = np.array(pd.read_csv(args.w,delim_whitespace=True).iloc[:,-1])[420505:]
+    snpstart = 1172832
+    snpend = 1190321
+    X = h5py.File(args.X,'r')['dataset'][snpstart:snpend,:]
+    ssdf = pd.read_csv(args.y,delim_whitespace=True)
+    y = np.array(ssdf['CHISQ'])[snpstart:snpend]
+    w_ld = h5py.File(args.w,'r')['dataset'][snpstart:snpend]
+    w = reg.compute_weights(w_ld,X,y)
+    w[w==0.0]=np.nan
+    inv_w = 1/w
+    inv_w = np.nan_to_num(inv_w,copy=False)
     coef = np.array(pd.read_csv(args.coef,delim_whitespace=True).iloc[:,0])
     intercept = pd.read_csv(args.intercept,delim_whitespace=True).iloc[0,0]
-    N = np.mean(pd.read_csv(args.y,delim_whitespace=True)['N'])
+    N = np.mean(ssdf['N'])
     ypred = N*X.dot(coef)+intercept
-    wsse = w.dot((ypred - y)**2)
+    wsse = inv_w.dot((ypred - y)**2)
     wssedf = pd.DataFrame(data=[wsse],columns=['WSSE'])
     wssedf.to_csv(args.out_folder+'_wsse',index=False,sep='\t')
     return
@@ -32,6 +37,24 @@ def varbetaloss(args):
     ssedf = pd.DataFrame(data=[sse],columns=['SSE'])
     ssedf.to_csv(args.out_folder+'_varbetasse',index=False,sep='\t')
     return
+
+def compute_varbeta(args):
+    args.annot_prefix
+    li = list() # list of varbetas, 22 elts one for each chrom
+    for i in range(1,23):
+        chrom = str(i)
+        print(chrom)
+        pdb.set_trace()
+        ann = h5py.File(args.annot_prefix+chrom+'.h5','r')['dataset'][:]
+        coef = np.array(pd.read_csv(args.coef,delim_whitespace=True).iloc[:,0])
+        varbeta = ann.dot(coef)
+        li.append(varbeta)
+    pdb.set_trace()
+    all_var = np.concatenate(li)
+    df = pd.DataFrame(data=all_var,columns=['VARBETA'])
+    df.to_csv(args.outfile,index=False,sep='\t')
+    return
+
     
 
 if __name__ == '__main__':
@@ -48,9 +71,14 @@ if __name__ == '__main__':
     parser.add_argument('--annot')
     parser.add_argument('--out_folder')
     parser.add_argument('--truevar')
+    parser.add_argument('--outfile')
+    parser.add_argument('--varbeta',action='store_true')
+    parser.add_argument('--annot_prefix')
     args = parser.parse_args()
 
     if args.ssloss and args.chr22:
         ssloss(args)
     if args.varbetaloss and args.chr22:
         varbetaloss(args) 
+    if args.varbeta and args.chr22:
+        compute_varbeta(args)

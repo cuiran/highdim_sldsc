@@ -56,7 +56,7 @@ class regression:
          
 
 class Lasso(regression):
-    def __init__(self,alpha='CV',CV_folds=5,CV_epochs=30,**kwargs):
+    def __init__(self,alpha='CV',CV_folds=3,CV_epochs=5,**kwargs):
         super().__init__(**kwargs)
         self.alpha=alpha
         self.CV_folds=CV_folds
@@ -91,6 +91,9 @@ class Lasso(regression):
         print('performing regression')
         model = Sequential()
         model.add(Dense(1,input_dim=processed_data.num_features,use_bias=False))
+        self.lr = d.est_lr(processed_data)
+        print(self.alpha)
+        print(self.lr)
         sgd = optimizers.SGD(lr=self.lr,decay=self.decay,momentum=self.momentum)
         model.compile(loss='mse',optimizer=sgd)
         model.fit_generator(generator(processed_data,self.minibatch_size),
@@ -162,18 +165,18 @@ def recover(learned_coef,processed_data):
 
 def dummy_gen(data,n):
     while True:
-        X = np.ones((30,6))
+        X = np.ones((30,690))
         y = np.ones((30,))
         yield X,y
 
 def generator(data,n):
-    X = u.read_h5(data.X)
+    X = u.read_h5(data.X)[:]
     y = np.array(pd.read_csv(data.y,delim_whitespace=True).iloc[:,0])
     while True:
         for batch_ind in batch_gen(data.active_ind,n):
             ends = u.get_endpoints(batch_ind)
-            batch_X = u.get_active(X,ends)
-            batch_y = u.get_active(y,ends)
+            batch_X = u.get_active_X(X,ends)
+            batch_y = u.get_active_y(y,ends)
             yield batch_X,batch_y
 
 def batch_gen(intervals, batch_size):
