@@ -6,8 +6,10 @@ import argparse
 import sklearn_cheat_hm3snps as reg
 
 def ssloss(args):
-    snpstart = 1172832
-    snpend = 1190321
+    chr_interval = pd.read_csv(args.chr_interval,delim_whitespace=True)
+    chrom = int(args.chrom)
+    snpstart = chr_interval.iloc[chrom-1,0]
+    snpend = chr_interval.iloc[chrom-1,1]
     X = h5py.File(args.X,'r')['dataset'][snpstart:snpend,:]
     ssdf = pd.read_csv(args.y,delim_whitespace=True)
     y = np.array(ssdf['CHISQ'])[snpstart:snpend]
@@ -21,6 +23,12 @@ def ssloss(args):
     N = np.mean(ssdf['N'])
     ypred = N*X.dot(coef)+intercept
     wsse = inv_w.dot((ypred - y)**2)
+    persnp_wsse = wsse/np.sum(inv_w)
+    worst_wsse = inv_w.dot((np.mean(y) - y)**2)/np.sum(inv_w)
+    wwsse = pd.DataFrame(data=[worst_wsse],columns=['mean_est_pwsse'])
+    wwsse.to_csv(args.out_folder+'_mean_est_pwsse',index=False,sep='\t')
+    persnp = pd.DataFrame(data=[persnp_wsse],columns=['pwsse'])
+    persnp.to_csv(args.out_folder+'_pwsse',index=False,sep='\t')
     wssedf = pd.DataFrame(data=[wsse],columns=['WSSE'])
     wssedf.to_csv(args.out_folder+'_wsse',index=False,sep='\t')
     return
@@ -74,9 +82,11 @@ if __name__ == '__main__':
     parser.add_argument('--outfile')
     parser.add_argument('--varbeta',action='store_true')
     parser.add_argument('--annot_prefix')
+    parser.add_argument('--chrom')
+    parser.add_argument('--chr_interval')
     args = parser.parse_args()
 
-    if args.ssloss and args.chr22:
+    if args.ssloss:
         ssloss(args)
     if args.varbetaloss and args.chr22:
         varbetaloss(args) 
